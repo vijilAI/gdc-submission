@@ -1,6 +1,6 @@
 llm:
   hub: together
-  model: mistralai/Mistral-Small-24B-Instruct-2501
+  model: meta-llama/Llama-3.3-70B-Instruct-Turbo
   params:
       temperature: 0.7
       max_completion_tokens: 256
