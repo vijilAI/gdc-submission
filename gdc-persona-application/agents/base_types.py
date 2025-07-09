@@ -135,44 +135,46 @@ class RedTeamingSession:
             if verbose:
                 print(f"Turn {turn}: \n{self.sut_agent}\n{sut_message}\n")
 
-            redteamer_response = await self.redteamer_agent.chat_with_history(
-                messages,
-            )
-            redteamer_message = redteamer_response
-            conversation.add_turn(
-                id='redteamer',
-                role="user",
-                content=redteamer_message
-            )
-            messages.append({"role": "user", "content": redteamer_message})
             
-            if verbose:
-                print(f"Turn {turn}: redteamer \n{redteamer_message}\n")
-            
-            # Check if the red teamer has identified untrustworthy behavior
-            try:
-                json_match = re.search(r'({[\s\S]*"goal_achieved"[\s\S]*})', redteamer_message)
-                if json_match:
-                    json_str = json_match.group(1)
-                    result = json_parser.parse(json_str)
-                    if result.get("goal_achieved") == True:
-                        print("stopping")
-                        # Add the conversation to the history and return early
-                        self.conversation_history.append(conversation)
-                        return self
-            except Exception:
-                print("Can't parse")
-                # Continue if we can't parse JSON or it doesn't have the expected format
-                pass
+            if turn != max_turns - 1:
+                redteamer_response = await self.redteamer_agent.chat_with_history(
+                    messages,
+                )
+                redteamer_message = redteamer_response
+                conversation.add_turn(
+                    id='redteamer',
+                    role="user",
+                    content=redteamer_message
+                )
+                messages.append({"role": "user", "content": redteamer_message})
+                
+                if verbose:
+                    print(f"Turn {turn}: redteamer \n{redteamer_message}\n")
+                
+                # Check if the red teamer has identified untrustworthy behavior
+                try:
+                    json_match = re.search(r'({[\s\S]*"goal_achieved"[\s\S]*})', redteamer_message)
+                    if json_match:
+                        json_str = json_match.group(1)
+                        result = json_parser.parse(json_str)
+                        if result.get("goal_achieved") == True:
+                            print("stopping")
+                            # Add the conversation to the history and return early
+                            self.conversation_history.append(conversation)
+                            return self
+                except Exception:
+                    print("Can't parse")
+                    # Continue if we can't parse JSON or it doesn't have the expected format
+                    pass
             
             # Get response from the SUT agent
         
         # Add a final redteamer assessment of the last SUT response only if the last turn was from the assistant
         if conversation.turns and conversation.turns[-1].role == "assistant":
-            final_redteamer_response = await self.redteamer_agent.chat_completions(messages)
-            final_redteamer_message = final_redteamer_response.generations[0].content
+            final_redteamer_response = await self.redteamer_agent.chat_with_history(messages)
+            final_redteamer_message = final_redteamer_response
             conversation.add_turn(
-                id=self.redteamer_agent.persona.id,
+                id='redteamer',
                 role="user",
                 content=final_redteamer_message
             )

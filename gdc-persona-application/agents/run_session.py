@@ -96,7 +96,7 @@ from langchain_core.output_parsers import JsonOutputParser
 
 
 
-async def run_session_from_config(persona_config, target_agent_config, goal_generator_config=None, redteamer_config=None, num_goals = 1, verbose = False):
+async def run_session_from_config(persona_config, target_agent_config, goal_generator_config=None, redteamer_config=None, num_goals = 1, verbose = False, max_turns = 1):
     """
     Main function to run the red teaming session.
     """
@@ -127,7 +127,7 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
             redteamer_agent=red_teamer_agent,
         )
 
-        await red_teaming_session.run_conversation(goal, seed_prompt, max_turns=1, verbose = verbose)
+        await red_teaming_session.run_conversation(goal, seed_prompt, max_turns=max_turns, verbose = verbose)
         result_dict[goal_type] = red_teaming_session.conversation_history
         break
     return result_dict
