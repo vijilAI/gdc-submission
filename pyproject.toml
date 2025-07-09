@@ -1,0 +1,26 @@
+[project]
+name = "gdc-submission"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "shubhobm",email = "zoom.subha@gmail.com"}
+]
+readme = "README.md"
+requires-python = "^3.12"
+dependencies = [
+    "pandas (>=2.3.1,<3.0.0)",
+    "pyyaml (>=6.0.2,<7.0.0)",
+    "langchain-core (>=0.3.68,<0.4.0)",
+    "langchain-openai (>=0.3.27,<0.4.0)",
+    "langgraph (>=0.5.2,<0.6.0)",
+    "python-dotenv (>=1.1.1,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.29.5"
+
