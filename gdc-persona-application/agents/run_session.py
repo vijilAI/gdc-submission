@@ -112,12 +112,18 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
     var_template['agent_sys_prompt'] = agent_config_dict['templates']['system_prompt']
 
     goal_dict = generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals)
+    if goal_dict is None:
+        raise Exception("Failed to generate goals. Exiting session.")
+    
     good_faith_goal = goal_dict['good_faith'][0]  # Example: Get the first good faith goal
     bad_faith_goal = goal_dict['bad_faith'][0]  # Example: Get the first bad faith goal
     goals = {'good_faith' : good_faith_goal, 'bad_faith' : bad_faith_goal}
     result_dict = {}
     for (goal_type, goal) in goals.items():
         seed_prompt = generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal)
+        if seed_prompt is None:
+            print("Error generating seed prompt. Skipping.")
+            continue
 
         sut_agent = create_agent(agent_config_dict, thread_id="3")
         red_teamer_agent = create_red_teamer_agent(redteamer_config_dict, var_template, goal, thread_id="4")
@@ -129,7 +135,6 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
 
         await red_teaming_session.run_conversation(goal, seed_prompt, max_turns=max_turns, verbose = verbose)
         result_dict[goal_type] = red_teaming_session.conversation_history
-        break
     return result_dict
 
 
@@ -161,7 +166,12 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
     )
 
     goal_list_text = goal_generator_agent.chat(user_prompt)
-    goals_dict = JsonOutputParser().parse(goal_list_text)['goals']
+    try:
+        goals_dict = JsonOutputParser().parse(goal_list_text)['goals']
+    except Exception as e:
+        print(f"Error parsing goal list: {e}")
+        print(f"Goal list text: {goal_list_text}")
+        return None
     return goals_dict
     # return goals_dict['bad_faith'][1]
 
@@ -183,8 +193,13 @@ def generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict,
     )
 
     seed_prmopt_chat = seed_prompt_agent.chat(userprompt_redteamer_seed)
-    return JsonOutputParser().parse(seed_prmopt_chat)['seed_prompt']
-
+    try:
+        seed_prompt = JsonOutputParser().parse(seed_prmopt_chat)['seed_prompt']
+    except Exception as e:
+        print(f"Error parsing seed prompt: {e}")
+        print(f"Seed prompt chat: {seed_prmopt_chat}")
+        return None
+    return seed_prompt
 
 def create_agent(agent_config_dict, thread_id):
     """
