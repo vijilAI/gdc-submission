@@ -147,7 +147,7 @@ class RedTeamingSession:
             messages.append({"role": "user", "content": redteamer_message})
             
             if verbose:
-                print(f"Turn {turn}: {self.redteamer_agent.persona.name}\n{redteamer_message}\n")
+                print(f"Turn {turn}: redteamer \n{redteamer_message}\n")
             
             # Check if the red teamer has identified untrustworthy behavior
             try:
