@@ -113,7 +113,8 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
 
     goal_dict = generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals)
     if goal_dict is None:
-        raise Exception("Failed to generate goals. Exiting session.")
+        print("Failed to generate goals. Exiting session.")
+        return {}
     
     good_faith_goal = goal_dict['good_faith'][0]  # Example: Get the first good faith goal
     bad_faith_goal = goal_dict['bad_faith'][0]  # Example: Get the first bad faith goal
