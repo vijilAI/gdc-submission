@@ -14,7 +14,10 @@ src_dir = os.path.abspath(
 )
 sys.path.insert(0, app_dir)
 sys.path.insert(0, src_dir)
+from db.models import Session as SessionModel  # noqa: E402
+from db.operations import persona_db, session_db  # noqa: E402
 
+print(sys.path)
 # Local application imports
 from agents.run_session import run_session_from_config  # noqa: E402
 
@@ -23,7 +26,8 @@ try:
     from db.models import Session as SessionModel  # noqa: E402
     from db.operations import persona_db, session_db  # noqa: E402
     DB_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print(f"⚠️  Database modules not found: {e}")
     DB_AVAILABLE = False
     persona_db = None
     session_db = None
@@ -128,6 +132,15 @@ class PersonaResponse(BaseModel):
     high_level_AI_view: str
     demographic_info: Dict[str, Any]
     survey_responses: Dict[str, str]
+
+
+class SessionResponse(BaseModel):
+    id: str
+    persona_id: str
+    num_goals: Optional[int] = None
+    max_turns: Optional[int] = None
+    session_data: Dict[str, Any]
+    good_faith: Optional[Any] = None
 
 
 @app.post("/run-red-teaming-session", response_model=RedTeamingResponse)
@@ -310,6 +323,25 @@ async def get_persona(persona_id: str):
             )
         
         return PersonaResponse(**persona.to_dict(), id=persona.id)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database error: {e}"
+        )
+
+@app.get("/session/{session_id}", response_model=SessionResponse)
+async def get_session(session_id: str):
+    """Get a specific session by ID"""
+    if not DB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        session = session_db.get_session_by_id(session_id)
+        if not session:
+            raise HTTPException(
+                status_code=404, detail=f"Persona {session_id} not found"
+            )
+        
+        return SessionResponse(**session.to_dict())
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Database error: {e}"

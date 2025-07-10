@@ -37,7 +37,7 @@ class Conversation:
         
         :return: Dictionary representation of the conversation.
         """
-        return {"turns": [turn.__dict__ for turn in self.turns]}
+        return { "goal" : self.goal, "turns": [turn.__dict__ for turn in self.turns]}
     
     def to_list(self) -> list:
         """
