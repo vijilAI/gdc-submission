@@ -4,7 +4,12 @@ Database operations for persona management.
 from typing import Optional, List
 import os
 import glob
-from models import Persona as PersonaModel, get_session, create_tables
+from .models import (
+    Persona as PersonaModel,
+    Session as SessionModel,
+    get_session,
+    create_tables
+)
 
 
 class PersonaDB:
@@ -143,3 +148,71 @@ class PersonaDB:
 
 # Global instance
 persona_db = PersonaDB()
+
+
+class SessionDB:
+    """
+    Database operations for sessions.
+    """
+
+    def __init__(self):
+        """Initialize database connection and create tables if needed."""
+        create_tables()
+
+    def create_session(self, session: SessionModel) -> SessionModel:
+        """
+        Create a new session in the database.
+        """
+        session_db_conn = get_session()
+        try:
+            session_db_conn.add(session)
+            session_db_conn.commit()
+            session_db_conn.refresh(session)
+            return session
+        except Exception as e:
+            session_db_conn.rollback()
+            raise e
+        finally:
+            session_db_conn.close()
+
+    def get_session_by_id(self, session_id: str) -> Optional[SessionModel]:
+        """
+        Get a session by ID.
+        """
+        session = get_session()
+        try:
+            return session.query(SessionModel).filter(
+                SessionModel.id == session_id
+            ).first()
+        finally:
+            session.close()
+
+    def get_all_sessions(self) -> List[SessionModel]:
+        """
+        Get all sessions from the database.
+        """
+        session = get_session()
+        try:
+            return session.query(SessionModel).order_by(
+                SessionModel.created_at.desc()
+            ).all()
+        finally:
+            session.close()
+
+    def get_sessions_by_persona_id(
+        self, persona_id: str
+    ) -> List[SessionModel]:
+        """
+        Get all sessions for a given persona ID.
+        """
+        session = get_session()
+        try:
+            return session.query(SessionModel).filter(
+                SessionModel.persona_id == persona_id
+            ).order_by(SessionModel.created_at.desc()).all()
+        finally:
+            session.close()
+
+
+# Global instance
+session_db = SessionDB()

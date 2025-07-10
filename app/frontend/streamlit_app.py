@@ -88,42 +88,59 @@ def load_personas() -> List[Dict[str, Any]]:
         st.error(f"Error connecting to API: {e}")
         return []
 
+
 def get_persona_details(persona_id: str) -> Dict[str, Any]:
-    """Get detailed information about a specific persona"""
+    """Fetch full details for a single persona."""
     try:
         response = requests.get(f"{API_BASE}/personas/{persona_id}")
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"Failed to get persona details: HTTP {response.status_code}")
+            st.error(
+                f"Failed to get details for persona {persona_id}: "
+                f"HTTP {response.status_code}"
+            )
             return {}
     except requests.exceptions.RequestException as e:
-        st.error(f"Error getting persona details: {e}")
+        st.error(f"API connection error: {e}")
         return {}
 
-def run_red_teaming_session(persona_id: str, num_goals: int, max_turns: int, verbose: bool) -> Dict[str, Any]:
-    """Run a red teaming session via the API"""
+
+def run_red_teaming_session(
+    persona_id: str, num_goals: int, max_turns: int, verbose: bool
+) -> Dict[str, Any]:
+    """Run a red teaming session via the API."""
+    payload = {
+        "persona_fname": persona_id,
+        "num_goals": num_goals,
+        "max_turns": max_turns,
+        "verbose": verbose,
+    }
     try:
-        session_data = {
-            "persona_fname": persona_id,
-            "num_goals": num_goals,
-            "max_turns": max_turns,
-            "verbose": verbose,
-            "use_db": True
-        }
-        
-        response = requests.post(f"{API_BASE}/run-red-teaming-session", json=session_data)
-        
+        response = requests.post(
+            f"{API_BASE}/run-red-teaming-session", json=payload
+        )
+        if response.status_code == 200:
+            return {"success": True, **response.json()}
+        else:
+            error_detail = response.json().get('detail', 'Unknown error')
+            return {"success": False, "error": error_detail}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": str(e)}
+
+
+def load_sessions() -> List[Dict[str, Any]]:
+    """Load session history from the API."""
+    try:
+        response = requests.get(f"{API_BASE}/sessions")
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"Session failed: HTTP {response.status_code}")
-            st.error(f"Response: {response.text}")
-            return {"success": False, "error": f"HTTP {response.status_code}"}
-            
+            st.error(f"Failed to load sessions: HTTP {response.status_code}")
+            return []
     except requests.exceptions.RequestException as e:
-        st.error(f"Error running session: {e}")
-        return {"success": False, "error": str(e)}
+        st.error(f"Error connecting to API: {e}")
+        return []
 
 
 def display_pretty_persona(details: Dict[str, Any]):
@@ -138,7 +155,6 @@ def display_pretty_persona(details: Dict[str, Any]):
     tab_titles = [
         "Demographics",
         "Survey Responses",
-        "Full JSON"
     ]
     tabs = st.tabs(tab_titles)
 
@@ -158,26 +174,38 @@ def display_pretty_persona(details: Dict[str, Any]):
         survey_responses = details.get('survey_responses', {})
         if survey_responses:
             for question, answer in survey_responses.items():
-                st.markdown(f"**❓ {question}**")
+                st.markdown(f"❓ {question}")
                 st.markdown(f"> {answer}")
                 st.markdown("---")
         else:
             st.info("No survey responses available.")
             
-    with tabs[2]:
-        st.json(details)
-
 
 def display_conversation_results(results: Dict[str, Any]):
     """Display the conversation results in a formatted way"""
-    if not results.get("success"):
+    session_id = results.get('session_id') or results.get('id')
+    session_data = results.get("session_data", {})
+
+    # For historical sessions, session_data might be a JSON string,
+    # and might even be double-encoded.
+    if isinstance(session_data, str):
+        try:
+            session_data = json.loads(session_data)
+            # Handle cases where it might be double-encoded
+            if isinstance(session_data, str):
+                session_data = json.loads(session_data)
+        except json.JSONDecodeError:
+            st.error("Failed to parse session data.")
+            session_data = {}
+
+    if session_id:
+        st.success(f"✅ Session `{session_id}` results:")
+    elif results.get("success"):
+        st.success("✅ Session completed successfully!")
+    else:
         st.error(f"Session failed: {results.get('error', 'Unknown error')}")
         return
-    
-    session_data = results.get("session_data", {})
-    
-    st.success("✅ Session completed successfully!")
-    
+
     # Create tabs for different goal types
     goal_types = list(session_data.keys())
     if goal_types:
@@ -192,44 +220,62 @@ def display_conversation_results(results: Dict[str, Any]):
                 conversations = session_data[goal_type]
 
                 if isinstance(conversations, list) and conversations:
-                    for j, conversation in enumerate(conversations):
+                    for j, conversation_item in enumerate(conversations):
                         st.subheader(f"Conversation {j + 1}")
 
+                        # Handle different data formats
+                        conversation = None
+                        if isinstance(conversation_item, str):
+                            try:
+                                conversation = json.loads(conversation_item)
+                            except json.JSONDecodeError as e:
+                                st.error(f"Could not parse conversation: {e}")
+                                st.write(f"Raw: {conversation_item[:200]}...")
+                                continue
+                        elif isinstance(conversation_item, dict):
+                            conversation = conversation_item
+                        elif hasattr(conversation_item, 'goal') and \
+                                hasattr(conversation_item, 'turns'):
+                            # Handle Conversation objects directly
+                            conversation = {
+                                'goal': getattr(
+                                    conversation_item, 'goal', None
+                                ),
+                                'turns': getattr(
+                                    conversation_item, 'turns', []
+                                ),
+                                'id': getattr(conversation_item, 'id', None)
+                            }
+                        elif hasattr(conversation_item, '__dict__'):
+                            # Handle other objects with attributes
+                            conversation = conversation_item.__dict__
+                        else:
+                            conv_type = type(conversation_item)
+                            st.error(f"Unknown format: {conv_type}")
+                            continue
+
                         # Display goal
-                        has_goal = (
-                            hasattr(conversation, 'goal') or
-                            (isinstance(conversation, dict) and
-                             'goal' in conversation)
-                        )
-                        if has_goal:
-                            goal = (
-                                conversation.goal
-                                if hasattr(conversation, 'goal')
-                                else conversation['goal']
-                            )
+                        goal = conversation.get('goal')
+                        if goal:
                             st.info(f"**Goal:** {goal}")
 
                         # Display turns
-                        has_turns = (
-                            hasattr(conversation, 'turns') or
-                            (isinstance(conversation, dict) and
-                             'turns' in conversation)
-                        )
-                        if has_turns:
-                            turns = (
-                                conversation.turns
-                                if hasattr(conversation, 'turns')
-                                else conversation['turns']
-                            )
+                        turns = conversation.get('turns', [])
+                        if turns:
+                            for turn_item in turns:
+                                # The turn might be a string in older data
+                                if isinstance(turn_item, str):
+                                    try:
+                                        turn = json.loads(turn_item)
+                                    except json.JSONDecodeError:
+                                        st.warning("Could not parse turn.")
+                                        continue
+                                else:
+                                    turn = turn_item
 
-                            for turn in turns:
-                                turn_data = (
-                                    turn if isinstance(turn, dict)
-                                    else turn.__dict__
-                                )
-                                role = turn_data.get('role', 'unknown')
-                                content = turn_data.get('content', '')
-                                turn_id = turn_data.get('id', '')
+                                role = turn.get('role', 'unknown')
+                                content = turn.get('content', '')
+                                turn_id = turn.get('id', '')
 
                                 # Style based on role
                                 if role.lower() == 'user':
@@ -248,6 +294,8 @@ def display_conversation_results(results: Dict[str, Any]):
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.info(f"No conversations found for {goal_type}")
+    else:
+        st.info("No session data available to display.")
 
 
 def main():
@@ -283,6 +331,10 @@ def main():
         st.session_state.selected_persona = None
     if 'session_results' not in st.session_state:
         st.session_state.session_results = None
+    if 'sessions_history' not in st.session_state:
+        st.session_state.sessions_history = None
+    if 'viewed_session' not in st.session_state:
+        st.session_state.viewed_session = None
     
     # Page 1: Browse Personas
     if page == "👥 Browse Personas":
@@ -550,7 +602,7 @@ def main():
             max_turns = st.slider(
                 "Maximum Turns",
                 min_value=1,
-                max_value=20,
+                max_value=10,
                 value=5,
                 help="Maximum number of conversation turns"
             )
@@ -620,23 +672,65 @@ def main():
     # Page 3: Session Results
     elif page == "📊 Session Results":
         st.header("Session Results")
-        
-        if st.session_state.session_results:
-            display_conversation_results(st.session_state.session_results)
-            
-            # Option to download results
-            if st.button("💾 Download Results as JSON"):
-                st.download_button(
-                    label="Download JSON",
-                    data=json.dumps(
-                        st.session_state.session_results, indent=2
-                    ),
-                    file_name=f"red_teaming_results_"
-                              f"{st.session_state.selected_persona}.json",
-                    mime="application/json"
-                )
+
+        # Display historical sessions
+        st.subheader("Session History")
+        if st.button("🔄 Refresh History"):
+            st.session_state.sessions_history = load_sessions()
+            st.session_state.viewed_session = None
+            st.rerun()
+
+        if st.session_state.sessions_history is None:
+            with st.spinner("Loading session history..."):
+                st.session_state.sessions_history = load_sessions()
+
+        sessions = st.session_state.sessions_history
+        if sessions:
+            df = pd.DataFrame(sessions)
+            df_display = df[['id', 'persona_id', 'created_at']].copy()
+            df_display['created_at'] = pd.to_datetime(
+                df_display['created_at']
+            ).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+            # Make the dataframe clickable
+            event = st.dataframe(
+                df_display,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row"
+            )
+
+            # Handle row selection
+            if event.selection and event.selection.rows:
+                selected_row_idx = event.selection.rows[0]
+                selected_session = sessions[selected_row_idx]
+                st.session_state.viewed_session = selected_session
+
         else:
-            st.info("No session results yet. Run a session first!")
+            st.info("No historical sessions found.")
+
+        # Display details of the viewed session
+        if st.session_state.viewed_session:
+            st.markdown("---")
+            session_id = st.session_state.viewed_session['id']
+            
+            # Header with export button
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.subheader(f"Details for Session: `{session_id}`")
+            with col2:
+                # Export session button
+                session_json = json.dumps(st.session_state.viewed_session, indent=2)
+                st.download_button(
+                    label="📥 Export Session",
+                    data=session_json,
+                    file_name=f"session_{session_id}.json",
+                    mime="application/json",
+                    use_container_width=True,
+                    help="Download session details as JSON"
+                )
+            
+            display_conversation_results(st.session_state.viewed_session)
 
     # Footer
     st.markdown("---")

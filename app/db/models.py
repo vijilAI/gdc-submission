@@ -1,14 +1,18 @@
 """
 Database models for the GDC Submission application.
 """
-from sqlalchemy import Column, String, Text, DateTime, create_engine
+from sqlalchemy import (
+    Column, String, Text, DateTime, create_engine, ForeignKey, Integer
+)
+from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import json
 import os
+import uuid
 
 Base = declarative_base()
+
 
 class Persona(Base):
     """
@@ -30,7 +34,9 @@ class Persona(Base):
     
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
     
     def to_dict(self):
         """
@@ -65,17 +71,63 @@ class Persona(Base):
             survey_responses=json.dumps(data['survey_responses'])
         )
 
+
+class Session(Base):
+    """
+    SQLAlchemy model for storing red teaming session data.
+    """
+    __tablename__ = 'sessions'
+
+    id = Column(
+        String(255), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    persona_id = Column(String(255), ForeignKey('personas.id'), nullable=False)
+    
+    # Session parameters
+    num_goals = Column(Integer, nullable=False)
+    max_turns = Column(Integer, nullable=False)
+
+    # Session results
+    session_data = Column(Text, nullable=False)  # JSON of the full output
+    good_faith = Column(Text, nullable=True)  # JSON of good_faith analysis
+
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationship to Persona
+    persona = relationship("Persona")
+
+    def to_dict(self):
+        """
+        Convert the database model to a dictionary.
+        """
+        return {
+            'id': self.id,
+            'persona_id': self.persona_id,
+            'num_goals': self.num_goals,
+            'max_turns': self.max_turns,
+            'session_data': json.loads(self.session_data),
+            'good_faith': (
+                json.loads(self.good_faith) if self.good_faith else None
+            ),
+            'created_at': self.created_at.isoformat()
+        }
+
+
 # Database configuration
 def get_db_path():
     """Get the absolute path for the database file"""
     current_dir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(current_dir, 'personas.db')
 
+
 DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite:///{get_db_path()}')
+
 
 def get_engine():
     """Create and return database engine"""
     return create_engine(DATABASE_URL, echo=False)
+
 
 def get_session():
     """Create and return database session"""
@@ -83,10 +135,12 @@ def get_session():
     SessionLocal = sessionmaker(bind=engine)
     return SessionLocal()
 
+
 def create_tables():
     """Create all database tables"""
     engine = get_engine()
     Base.metadata.create_all(engine)
+
 
 def drop_tables():
     """Drop all database tables"""
