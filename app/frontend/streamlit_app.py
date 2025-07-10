@@ -125,6 +125,49 @@ def run_red_teaming_session(persona_id: str, num_goals: int, max_turns: int, ver
         st.error(f"Error running session: {e}")
         return {"success": False, "error": str(e)}
 
+
+def display_pretty_persona(details: Dict[str, Any]):
+    """Display persona details in a well-formatted way."""
+    st.subheader(f"Persona ID: {details.get('id', 'N/A')}")
+
+    st.markdown(f"""
+    - **Participant ID:** `{details.get('participant_id', 'N/A')}`
+    - **Language:** `{details.get('response_language', 'N/A')}`
+    """)
+
+    tab_titles = [
+        "Demographics",
+        "Survey Responses",
+        "Full JSON"
+    ]
+    tabs = st.tabs(tab_titles)
+
+    with tabs[0]:
+        demographics = details.get('demographic_info', {})
+        country = demographics.get('self identified country', 'N/A')
+        st.markdown(f"""
+        - **Age Bracket:** {demographics.get('age bracket', 'N/A')}
+        - **Gender:** {demographics.get('gender', 'N/A')}
+        - **Religion:** {demographics.get('religion', 'N/A')}
+        - **Country of Residence:** {country}
+        - **Community Type:** {demographics.get('community type', 'N/A')}
+        - **Preferred Language:** {details.get('response_language', 'N/A')}
+        """)
+
+    with tabs[1]:
+        survey_responses = details.get('survey_responses', {})
+        if survey_responses:
+            for question, answer in survey_responses.items():
+                st.markdown(f"**❓ {question}**")
+                st.markdown(f"> {answer}")
+                st.markdown("---")
+        else:
+            st.info("No survey responses available.")
+            
+    with tabs[2]:
+        st.json(details)
+
+
 def display_conversation_results(results: Dict[str, Any]):
     """Display the conversation results in a formatted way"""
     if not results.get("success"):
@@ -138,46 +181,75 @@ def display_conversation_results(results: Dict[str, Any]):
     # Create tabs for different goal types
     goal_types = list(session_data.keys())
     if goal_types:
-        tabs = st.tabs([f"🎯 {goal_type.replace('_', ' ').title()}" for goal_type in goal_types])
-        
+        tab_titles = [
+            f"🎯 {goal_type.replace('_', ' ').title()}"
+            for goal_type in goal_types
+        ]
+        tabs = st.tabs(tab_titles)
+
         for i, goal_type in enumerate(goal_types):
             with tabs[i]:
                 conversations = session_data[goal_type]
-                
+
                 if isinstance(conversations, list) and conversations:
                     for j, conversation in enumerate(conversations):
                         st.subheader(f"Conversation {j + 1}")
-                        
+
                         # Display goal
-                        if hasattr(conversation, 'goal') or (isinstance(conversation, dict) and 'goal' in conversation):
-                            goal = conversation.goal if hasattr(conversation, 'goal') else conversation['goal']
+                        has_goal = (
+                            hasattr(conversation, 'goal') or
+                            (isinstance(conversation, dict) and
+                             'goal' in conversation)
+                        )
+                        if has_goal:
+                            goal = (
+                                conversation.goal
+                                if hasattr(conversation, 'goal')
+                                else conversation['goal']
+                            )
                             st.info(f"**Goal:** {goal}")
-                        
+
                         # Display turns
-                        if hasattr(conversation, 'turns') or (isinstance(conversation, dict) and 'turns' in conversation):
-                            turns = conversation.turns if hasattr(conversation, 'turns') else conversation['turns']
-                            
+                        has_turns = (
+                            hasattr(conversation, 'turns') or
+                            (isinstance(conversation, dict) and
+                             'turns' in conversation)
+                        )
+                        if has_turns:
+                            turns = (
+                                conversation.turns
+                                if hasattr(conversation, 'turns')
+                                else conversation['turns']
+                            )
+
                             for turn in turns:
-                                turn_data = turn if isinstance(turn, dict) else turn.__dict__
+                                turn_data = (
+                                    turn if isinstance(turn, dict)
+                                    else turn.__dict__
+                                )
                                 role = turn_data.get('role', 'unknown')
                                 content = turn_data.get('content', '')
                                 turn_id = turn_data.get('id', '')
-                                
+
                                 # Style based on role
                                 if role.lower() == 'user':
-                                    st.markdown(f"**🔴 Red Teamer ({turn_id}):**")
+                                    st.markdown(
+                                        f"**🔴 Red Teamer ({turn_id}):**"
+                                    )
                                     st.markdown(f"> {content}")
                                 else:
-                                    st.markdown(f"**🤖 Assistant ({turn_id}):**")
+                                    st.markdown(
+                                        f"**🤖 Assistant ({turn_id}):**"
+                                    )
                                     st.markdown(f"> {content}")
-                                
+
                                 st.markdown("---")
-                        
+
                         st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.info(f"No conversations found for {goal_type}")
 
-# Main app
+
 def main():
     # Header
     st.markdown("""
@@ -186,14 +258,17 @@ def main():
         <p>Interactive persona-based AI red teaming interface</p>
     </div>
     """, unsafe_allow_html=True)
-    
+
     # Check API health
     if not check_api_health():
-        st.error("❌ API server is not responding. Please start it with: `python app/api/run_api.py`")
+        st.error(
+            "❌ API server is not responding. "
+            "Please start it with: `python app/api/run_api.py`"
+        )
         st.stop()
     else:
         st.sidebar.success("✅ API server is running")
-    
+
     # Sidebar for navigation
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
@@ -212,63 +287,254 @@ def main():
     # Page 1: Browse Personas
     if page == "👥 Browse Personas":
         st.header("Available Personas")
-        
-        # Load personas button
-        if st.button("🔄 Refresh Personas", type="primary"):
-            with st.spinner("Loading personas..."):
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.write(
+                "Browse, filter, and select personas for red teaming sessions."
+            )
+        with col2:
+            if st.button("🔄 Refresh Personas", use_container_width=True):
                 st.session_state.personas = load_personas()
+                # Clear detailed cache on refresh
+                if 'personas_full' in st.session_state:
+                    del st.session_state['personas_full']
         
         # Load personas on first visit
-        if not st.session_state.personas:
+        if 'personas' not in st.session_state or not st.session_state.personas:
             with st.spinner("Loading personas..."):
                 st.session_state.personas = load_personas()
         
         if st.session_state.personas:
-            st.success(f"Found {len(st.session_state.personas)} personas in database")
-            
-            # Create columns for persona grid
+            # Fetch full details for filtering if not already cached
+            if 'personas_full' not in st.session_state:
+                with st.spinner("Fetching details for all personas..."):
+                    personas_full = [
+                        get_persona_details(p['id'])
+                        for p in st.session_state.personas if p
+                    ]
+                    st.session_state.personas_full = [
+                        p for p in personas_full if p
+                    ]
+
+            personas_full = st.session_state.get('personas_full', [])
+
+            # --- Filtering Logic ---
+            if 'filters' not in st.session_state:
+                st.session_state.filters = {}
+
+            # Define the dialog function outside the button click
+            # to ensure it's available.
+            @st.dialog("Filter by Demographics")
+            def show_filter_dialog():
+                """Shows a dialog for filtering personas."""
+                st.subheader("Apply Demographic Filters")
+
+                all_personas = st.session_state.get('personas_full', [])
+
+                def get_unique_values(key, is_demographic=False):
+                    values = set()
+                    for p in all_personas:
+                        if is_demographic:
+                            value = p.get('demographic_info', {}).get(key)
+                        else:
+                            value = p.get(key)
+                        if value:
+                            values.add(value)
+                    return sorted(list(values))
+
+                # Use a temporary dict for selections to avoid modifying
+                # session state directly.
+                current_filters = st.session_state.get('filters', {}).copy()
+
+                age_bracket = st.multiselect(
+                    "Age Bracket",
+                    get_unique_values('age bracket', is_demographic=True),
+                    default=current_filters.get('age_bracket', [])
+                )
+                gender = st.multiselect(
+                    "Gender",
+                    get_unique_values('gender', is_demographic=True),
+                    default=current_filters.get('gender', [])
+                )
+                religion = st.multiselect(
+                    "Religion",
+                    get_unique_values('religion', is_demographic=True),
+                    default=current_filters.get('religion', [])
+                )
+                country_of_residence = st.multiselect(
+                    "Country",
+                    get_unique_values(
+                        'self identified country', is_demographic=True
+                    ),
+                    default=current_filters.get('country_of_residence', [])
+                )
+                community_type = st.multiselect(
+                    "Community Type",
+                    get_unique_values('community type', is_demographic=True),
+                    default=current_filters.get('community_type', [])
+                )
+                response_language = st.multiselect(
+                    "Language",
+                    get_unique_values('response_language'),
+                    default=current_filters.get('response_language', [])
+                )
+
+                # --- Live Filtering for Preview ---
+                temp_filters = {
+                    'age_bracket': age_bracket,
+                    'gender': gender,
+                    'religion': religion,
+                    'country_of_residence': country_of_residence,
+                    'community_type': community_type,
+                    'response_language': response_language,
+                }
+
+                filtered_count = len(all_personas)
+                if any(temp_filters.values()):
+                    temp_filtered_personas = all_personas
+                    for key, values in temp_filters.items():
+                        if values:
+                            if key == 'response_language':
+                                temp_filtered_personas = [
+                                    p for p in temp_filtered_personas
+                                    if p.get(key) in values
+                                ]
+                            else:
+                                demographic_key_map = {
+                                    'age_bracket': 'age bracket',
+                                    'gender': 'gender',
+                                    'religion': 'religion',
+                                    'country_of_residence':
+                                        'self identified country',
+                                    'community_type': 'community type'
+                                }
+                                demographic_key = demographic_key_map[key]
+                                temp_filtered_personas = [
+                                    p for p in temp_filtered_personas
+                                    if p.get('demographic_info', {})
+                                        .get(demographic_key) in values
+                                ]
+                    filtered_count = len(temp_filtered_personas)
+
+                st.info(f"Matching personas: **{filtered_count}**")
+
+                c1, c2 = st.columns([1, 1])
+                if c1.button(
+                    "Apply", use_container_width=True, type="primary"
+                ):
+                    st.session_state.filters = temp_filters
+                    st.rerun()
+                if c2.button("Clear Filters", use_container_width=True):
+                    st.session_state.filters = {}
+                    st.rerun()
+
+            if st.button("🔍 Filter Personas", use_container_width=True):
+                show_filter_dialog()
+
+            def persona_matches(p):
+                for key, selected_values in st.session_state.filters.items():
+                    if not selected_values:
+                        continue
+
+                    value = None
+                    demo_keys = [
+                        'age_bracket', 'gender', 'religion', 'community_type'
+                    ]
+                    if key in demo_keys:
+                        value = p.get('demographic_info', {}).get(
+                            key.replace('_', ' ')
+                        )
+                    elif key == 'country_of_residence':
+                        value = p.get('demographic_info', {}).get(
+                            'self identified country'
+                        )
+                    else:
+                        value = p.get(key)
+
+                    if value not in selected_values:
+                        return False
+                return True
+
+            filtered_personas = [
+                p for p in personas_full if persona_matches(p)
+            ]
+
+            active_filters_count = sum(
+                1 for v in st.session_state.filters.values() if v
+            )
+            if active_filters_count > 0:
+                st.info(
+                    f"Showing {len(filtered_personas)} of "
+                    f"{len(personas_full)} personas "
+                    f"({active_filters_count} filters active)"
+                )
+            else:
+                st.success(f"Showing all {len(filtered_personas)} personas.")
+
+            # --- Persona Grid Display ---
             cols = st.columns(3)
-            
-            for i, persona in enumerate(st.session_state.personas):
+
+            @st.dialog("Persona Details")
+            def show_details_dialog(persona):
+                display_pretty_persona(persona)
+                if st.button("Close"):
+                    st.rerun()
+
+            for i, persona in enumerate(filtered_personas):
                 col = cols[i % 3]
-                
                 with col:
-                    # Create persona card
-                    card_class = "selected-persona" if st.session_state.selected_persona == persona['id'] else "persona-card"
-                    
+                    card_class = (
+                        "selected-persona"
+                        if st.session_state.selected_persona == persona['id']
+                        else "persona-card"
+                    )
                     st.markdown(f"""
                     <div class="{card_class}">
                         <strong>{persona['id']}</strong><br>
-                        <span style="background: #2196f3; color: white; padding: 2px 6px; border-radius: 10px; font-size: 0.8em;">
+                        <span style="background: #2196f3; color: white;
+                                     padding: 2px 6px; border-radius: 10px;
+                                     font-size: 0.8em;">
                             {persona['response_language']}
                         </span><br>
                         <small>ID: {persona['participant_id']}</small>
                     </div>
                     """, unsafe_allow_html=True)
-                    
-                    if st.button(f"Select", key=f"select_{persona['id']}", use_container_width=True):
+
+                    b_cols = st.columns(2)
+                    if b_cols[0].button(
+                        "Select",
+                        key=f"select_{persona['id']}",
+                        use_container_width=True
+                    ):
                         st.session_state.selected_persona = persona['id']
                         st.success(f"Selected: {persona['id']}")
-                        
-                    if st.button(f"View Details", key=f"details_{persona['id']}", use_container_width=True):
-                        with st.spinner("Loading persona details..."):
-                            details = get_persona_details(persona['id'])
-                            if details:
-                                st.json(details)
+
+                    if b_cols[1].button(
+                        "Details",
+                        key=f"details_{persona['id']}",
+                        use_container_width=True
+                    ):
+                        show_details_dialog(persona)
         else:
-            st.warning("No personas found. Make sure the database is populated.")
-    
+            st.warning(
+                "No personas found. Make sure the database is populated."
+            )
+
     # Page 2: Run Session
     elif page == "🎯 Run Session":
         st.header("Configure Red Teaming Session")
-        
+
         # Check if persona is selected
         if not st.session_state.selected_persona:
-            st.warning("Please select a persona from the 'Browse Personas' page first.")
+            st.warning(
+                "Please select a persona from the "
+                "'Browse Personas' page first."
+            )
             st.stop()
-        
+
         st.info(f"Selected Persona: **{st.session_state.selected_persona}**")
-        
+
         # Session configuration
         col1, col2 = st.columns(2)
         
@@ -305,12 +571,18 @@ def main():
             })
         
         # Run session button
-        if st.button("🚀 Run Red Teaming Session", type="primary", use_container_width=True):
-            with st.spinner("Running red teaming session... This may take a few minutes."):
+        if st.button(
+            "🚀 Run Red Teaming Session",
+            type="primary",
+            use_container_width=True
+        ):
+            with st.spinner(
+                "Running red teaming session... This may take a few minutes."
+            ):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                
-                # Simulate progress (since we can't get real progress from the API)
+
+                # Simulate progress
                 for i in range(100):
                     progress_bar.progress(i + 1)
                     if i < 20:
@@ -322,7 +594,7 @@ def main():
                     else:
                         status_text.text("Finalizing results...")
                     time.sleep(0.05)
-                
+
                 # Actually run the session
                 results = run_red_teaming_session(
                     st.session_state.selected_persona,
@@ -330,17 +602,21 @@ def main():
                     max_turns,
                     verbose
                 )
-                
+
                 progress_bar.empty()
                 status_text.empty()
-                
+
                 if results.get("success"):
                     st.session_state.session_results = results
-                    st.success("Session completed! View results in the 'Session Results' tab.")
+                    st.success(
+                        "Session completed! View results in the "
+                        "'Session Results' tab."
+                    )
                     st.balloons()
                 else:
-                    st.error(f"Session failed: {results.get('error', 'Unknown error')}")
-    
+                    error_msg = results.get('error', 'Unknown error')
+                    st.error(f"Session failed: {error_msg}")
+
     # Page 3: Session Results
     elif page == "📊 Session Results":
         st.header("Session Results")
@@ -352,20 +628,25 @@ def main():
             if st.button("💾 Download Results as JSON"):
                 st.download_button(
                     label="Download JSON",
-                    data=json.dumps(st.session_state.session_results, indent=2),
-                    file_name=f"red_teaming_results_{st.session_state.selected_persona}.json",
+                    data=json.dumps(
+                        st.session_state.session_results, indent=2
+                    ),
+                    file_name=f"red_teaming_results_"
+                              f"{st.session_state.selected_persona}.json",
                     mime="application/json"
                 )
         else:
             st.info("No session results yet. Run a session first!")
-    
+
     # Footer
     st.markdown("---")
-    st.markdown("""
-    <div style="text-align: center; color: #666;">
-        <p>GDC Persona Red Teaming Platform | Built with Streamlit</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        "<p style='text-align: center; color: #888;'>"
+        "GDC Persona Red Teaming Platform | Built with Streamlit"
+        "</p>",
+        unsafe_allow_html=True
+    )
+
 
 if __name__ == "__main__":
     main()
