@@ -16,7 +16,9 @@ dependencies = [
     "python-dotenv (>=1.1.1,<2.0.0)",
     "fastapi (>=0.116.0,<0.117.0)",
     "uvicorn (>=0.35.0,<0.36.0)",
-    "pydantic (>=2.11.7,<3.0.0)"
+    "pydantic (>=2.11.7,<3.0.0)",
+    "wordcloud (>=1.9.4,<2.0.0)",
+    "scikit-learn (>=1.7.0,<2.0.0)"
 ]
 
 
