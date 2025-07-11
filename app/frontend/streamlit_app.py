@@ -324,7 +324,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Choose a page:",
-        ["👥 Browse Personas", "🎯 Run Session", "📊 Session Results", "Session Analysis"]
+        ["👥 Browse Personas", "🎯 Run Session", "📊 Session Results", "🔬 Session Analysis"]
     )
     
     # Initialize session state
@@ -734,11 +734,10 @@ def main():
                 )
             
             display_conversation_results(st.session_state.viewed_session)
-    elif page == "Session Analysis":
+    elif page == "🔬 Session Analysis":
         st.header("Session Analysis")
         st.info(
-            "This page is under construction. "
-            "Stay tuned for advanced analysis features!"
+            "Examine how different demographic factors influence the types of conversations!. "
         )
         st.subheader("Session History")
         if st.button("🔄 Refresh History"):
@@ -781,9 +780,21 @@ def main():
 
             # Step 2: Allow user to select demographic attributes for pivoting
             st.subheader("Demographic Analysis")
-            attribute = st.selectbox("Select Demographic Attribute", options=[None, 'age bracket', 'gender', 'religion', 'country_of_residence', 'community_type', 'response_language', 'high_level_AI_view'])
+            demographic_key_map2 = {
+                                'Age Range': 'age bracket',
+                                'Gender': 'gender',
+                                'Religion': 'religion',
+                                'Country of Residence':'self identified country',
+                                'Community Type': 'community type', 
+                                'Langauge' : 'response_language',
+                                'View of AI' : 'high_level_AI_view',
+                                }
+            options = [None] + list(demographic_key_map2.keys())
+            attribute_selected = st.selectbox("Select Demographic Attribute", options=options)
             
-            if attribute:
+            if attribute_selected:
+                # Map the selected attribute to the actual column name
+                attribute = demographic_key_map2.get(attribute_selected, attribute_selected)
                 unique_values = merged_df[attribute].dropna().unique()
                 unique_values = sorted(unique_values)
 
@@ -833,11 +844,11 @@ def main():
 
                 fig, ax = plt.subplots(figsize=(10, 5))
                 for i, value in enumerate(unique_values):
-                    st.markdown(f"### {attribute.capitalize()}: {value}")
+                    st.markdown(f"### {attribute_selected}: {value}")
                     wordcloud = generate_wordcloud_for_document(i)
                     ax.imshow(wordcloud, interpolation='bilinear')
                     ax.axis('off')  # Remove axes for better visualization
-                    ax.set_title(f"{attribute.capitalize()}: {value}", fontsize=16)
+                    # ax.set_title(f"{attribute_selected.capitalize()}: {value}", fontsize=16)
                     st.pyplot(fig)
 
 
