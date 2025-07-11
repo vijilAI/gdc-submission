@@ -54,11 +54,6 @@ An exploratory platform for understanding how AI conversational agents interact 
    export TOGETHER_API_KEY="your_together_ai_api_key"
    ```
 
-4. **Populate the persona database**:
-   ```bash
-   python scripts/populate_db.py
-   ```
-
 ### Running the Application
 
 1. **Start the API Server**:
