@@ -4,6 +4,9 @@ import json
 import pandas as pd
 from typing import Dict, List, Any
 import time
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 # Configuration
 API_BASE = "http://localhost:8000"
@@ -321,7 +324,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Choose a page:",
-        ["👥 Browse Personas", "🎯 Run Session", "📊 Session Results"]
+        ["👥 Browse Personas", "🎯 Run Session", "📊 Session Results", "Session Analysis"]
     )
     
     # Initialize session state
@@ -731,6 +734,112 @@ def main():
                 )
             
             display_conversation_results(st.session_state.viewed_session)
+    elif page == "Session Analysis":
+        st.header("Session Analysis")
+        st.info(
+            "This page is under construction. "
+            "Stay tuned for advanced analysis features!"
+        )
+        st.subheader("Session History")
+        if st.button("🔄 Refresh History"):
+            st.session_state.sessions_history = load_sessions()
+            st.session_state.viewed_session = None
+            st.rerun()
+
+        if st.session_state.sessions_history is None:
+            with st.spinner("Loading session history..."):
+                st.session_state.sessions_history = load_sessions()
+
+        sessions = st.session_state.sessions_history
+        if sessions:
+            # Now need to load personas to display demographic info
+            df = pd.DataFrame(sessions)
+            if 'personas_full' not in st.session_state:
+                with st.spinner("Fetching details for all personas..."):
+                    personas_full = [
+                        get_persona_details(p['id'])
+                        for p in st.session_state.personas if p
+                    ]
+                    st.session_state.personas_full = [
+                        p for p in personas_full if p
+                    ]
+
+
+            personas_full = st.session_state.get('personas_full', [])
+            personas_df = pd.DataFrame(personas_full)
+            if 'demographic_info' in personas_df.columns:
+                # Flatten the 'demographic_info' column into separate columns
+                demographic_df = pd.json_normalize(personas_df['demographic_info'])
+
+                # Merge the normalized demographic data back into the personas DataFrame
+                personas_df = pd.concat([personas_df, demographic_df], axis=1)
+
+                # Display the updated DataFrame
+                # st.write(personas_df)
+
+            merged_df = pd.merge(df, personas_df, left_on='persona_id', right_on='id', how='left')
+
+            # Step 2: Allow user to select demographic attributes for pivoting
+            st.subheader("Demographic Analysis")
+            attribute = st.selectbox("Select Demographic Attribute", options=[None, 'age bracket', 'gender', 'religion', 'country_of_residence', 'community_type', 'response_language', 'high_level_AI_view'])
+            
+            if attribute:
+                unique_values = merged_df[attribute].dropna().unique()
+                unique_values = sorted(unique_values)
+
+                output_all_text = {}
+
+                # Generate and display a word cloud for each unique value
+                for value in unique_values:
+                    
+                    # Filter data for the current value
+                    filtered_data = merged_df[merged_df[attribute] == value]
+                    
+                    # Combine text data for the word cloud
+                    # text_data = " ".join(filtered_data['persona_id'].dropna().astype(str))  # Replace 'persona_id' with relevant text column
+                    
+                    text_data = ""
+                    for session_filtered in filtered_data['session_data'].dropna():
+                        # print(session_filtered)
+                        # print(session_filtered['good_faith'][0])
+                        if isinstance(session_filtered, dict) and 'turns' in session_filtered['good_faith'][0]:
+                            # print('looking around')
+                            all_turns = session_filtered['good_faith'][0]['turns']
+                            my_str = "\n".join([f"{x['role']} : {x['content']}" for x in all_turns])
+                            text_data += my_str
+                    # Generate the word cloud
+                    output_all_text[value] = text_data
+
+                    document_list = list(output_all_text.values())
+                    print(len(document_list))
+
+                vectorizer = TfidfVectorizer(stop_words='english')
+                tfidf_matrix = vectorizer.fit_transform(document_list)
+                feature_names = vectorizer.get_feature_names_out()
+
+
+                def generate_wordcloud_for_document(doc_index):
+                    # Get the TF-IDF vector for this document
+                    tfidf_vector = tfidf_matrix[doc_index]
+                    word_scores = {
+                        feature_names[i]: tfidf_vector[0, i]
+                        for i in tfidf_vector.nonzero()[1]
+                    }
+                        
+                        # Generate word cloud from TF-IDF scores
+                    wordcloud = WordCloud(width=800, height=400, background_color='white')
+                    wordcloud.generate_from_frequencies(word_scores)
+                    return(wordcloud)
+
+                fig, ax = plt.subplots(figsize=(10, 5))
+                for i, value in enumerate(unique_values):
+                    st.markdown(f"### {attribute.capitalize()}: {value}")
+                    wordcloud = generate_wordcloud_for_document(i)
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')  # Remove axes for better visualization
+                    ax.set_title(f"{attribute.capitalize()}: {value}", fontsize=16)
+                    st.pyplot(fig)
+
 
     # Footer
     st.markdown("---")
