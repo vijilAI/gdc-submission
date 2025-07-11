@@ -143,32 +143,16 @@ def display_batch_status(batch_status: Dict[str, Any]):
         return
     
     batch_data = batch_status
-    st.subheader(f"Batch Status: {batch_data['batch_id']}")
     
     # Overall progress
     total = batch_data['total_personas']
     completed = batch_data['completed']
-    failed = batch_data['failed']
-    running = batch_data['running']
-    pending = batch_data['pending']
     
-    # Progress bar
+    # Progress bar (without text)
     progress = completed / total if total > 0 else 0
-    st.progress(progress, text=f"Overall Progress: {completed}/{total} personas completed")
+    st.progress(progress)
     
-    # Status summary
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Completed", completed, delta=None)
-    with col2:
-        st.metric("Running", running, delta=None)
-    with col3:
-        st.metric("Pending", pending, delta=None)
-    with col4:
-        st.metric("Failed", failed, delta=None)
-    
-    # Detailed status for each persona
-    st.subheader("Individual Persona Status")
+    # Individual persona status
     for persona_status in batch_data['persona_statuses']:
         with st.expander(f"Persona: {persona_status['persona_id']} - {persona_status['status'].title()}"):
             col1, col2 = st.columns([2, 1])
@@ -802,6 +786,7 @@ def main():
             col1, col2 = st.columns([3, 1])
             with col1:
                 st.write(f"Batch ID: `{st.session_state.multi_session_batch_id}`")
+                st.write(f"Click '🔄 Refresh Status' to check the current status of conversations.")
             with col2:
                 if st.button("🔄 Refresh Status", use_container_width=True):
                     st.rerun()

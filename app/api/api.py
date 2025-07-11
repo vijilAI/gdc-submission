@@ -424,15 +424,25 @@ async def run_single_persona_session_async(
         # Update progress
         multi_session_status[batch_id]["persona_statuses"][persona_id].update({
             "progress": 30,
-            "message": "Generating goals and running conversations..."
+            "message": "Generating goals..."
         })
+        
+        # Create a callback function to update progress during session execution
+        def progress_callback(stage: str, progress: int):
+            multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+                "progress": min(progress, 90),  # Cap at 90% until completion
+                "message": stage
+            })
+        
+        # Add progress callback to session kwargs
+        session_kwargs['progress_callback'] = progress_callback
         
         # Run the session (this is now fully async including conversations)
         output = await run_session_from_config(**session_kwargs)
         
         # Update progress
         multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "progress": 80,
+            "progress": 95,
             "message": "Processing session data..."
         })
         

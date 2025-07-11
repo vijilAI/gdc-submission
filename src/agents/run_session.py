@@ -18,7 +18,7 @@ from langchain_core.output_parsers import JsonOutputParser
 async def run_session_from_config(
     persona_config, target_agent_config, goal_generator_config=None,
     user_config=None, num_goals=1, verbose=False, max_turns=1,
-    conversations_per_goal=1, use_db=True
+    conversations_per_goal=1, use_db=True, progress_callback=None
 ):
     """
     Main function to run the virtual user testing session.
@@ -48,6 +48,10 @@ async def run_session_from_config(
     agent_config_dict = load_yaml(target_agent_config)
     user_config_dict = load_yaml(user_config)
 
+    # Progress: 35% - loaded configs
+    if progress_callback:
+        progress_callback("Loaded configurations", 35)
+
     # Load persona from database or JSON file
     if use_db:
         # Handle different types of persona_config
@@ -72,7 +76,11 @@ async def run_session_from_config(
     var_template = persona.to_template_vars()
     var_template['agent_sys_prompt'] = agent_config_dict['templates']['system_prompt']
 
-    goal_dict = generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals)
+    # Progress: 40% - loaded persona
+    if progress_callback:
+        progress_callback("Loaded persona data", 40)
+
+    goal_dict = generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals, progress_callback)
     if goal_dict is None:
         print("Failed to generate goals. Exiting session.")
         return {}
@@ -86,10 +94,14 @@ async def run_session_from_config(
     # Create a result dict to store conversations for each goal
     result_dict = {}
     
+    # Progress: 60% - starting conversations
+    if progress_callback:
+        progress_callback("Starting conversations", 60)
+    
     # async task to run conversations for each goal
     async def run_goal_conversations(goal, goal_idx, conv_idx):
         seed_prompt = generate_seed_prompt(
-            user_config_dict, var_template, agent_config_dict, goal
+            user_config_dict, var_template, agent_config_dict, goal, progress_callback
         )
         if seed_prompt is None:
             print(f"Error generating seed prompt for goal {goal_idx+1}, "
@@ -120,7 +132,16 @@ async def run_session_from_config(
         for i, goal in enumerate(goals_list)
         for conv_idx in range(conversations_per_goal)
     ]
+    
+    # Progress: 70% - running conversations
+    if progress_callback:
+        progress_callback("Running conversations", 70)
+    
     conversation_list = await asyncio.gather(*tasks)
+    
+    # Progress: 85% - processing results
+    if progress_callback:
+        progress_callback("Processing conversation results", 85)
     
     # store conversations in result_dict
     for conv in conversation_list:
@@ -141,7 +162,7 @@ def load_yaml(config_path):
         return yaml.safe_load(f)
 
 
-def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals):
+def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals, progress_callback=None):
     """
     Generate a goal using the goal generator agent with retry logic.
     """
@@ -176,6 +197,9 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
             # Validate that we got the expected structure
             if 'goals' in goals_dict and isinstance(goals_dict['goals'], list):
                 print(f"Successfully generated {len(goals_dict['goals'])} goals on attempt {attempt + 1}")
+                # Update progress callback
+                if progress_callback:
+                    progress_callback(f"Generated {len(goals_dict['goals'])} goals", 50)
                 return goals_dict
             else:
                 raise ValueError("Invalid goals structure returned")
@@ -194,7 +218,7 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
     return None
 
 
-def generate_seed_prompt(user_config_dict, var_template, agent_config_dict, goal):
+def generate_seed_prompt(user_config_dict, var_template, agent_config_dict, goal, progress_callback=None):
     """
     Generate a seed prompt using the redteamer agent with retry logic.
     """
@@ -234,6 +258,9 @@ def generate_seed_prompt(user_config_dict, var_template, agent_config_dict, goal
             if 'seed_prompt' in parsed_result:
                 seed_prompt = parsed_result['seed_prompt']
                 print(f"Successfully generated seed prompt on attempt {attempt + 1}")
+                # Update progress callback
+                if progress_callback:
+                    progress_callback("Generated seed prompt", 65)
                 return seed_prompt
             else:
                 raise ValueError("No 'seed_prompt' key in response")
