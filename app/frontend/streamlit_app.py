@@ -693,11 +693,11 @@ def main():
 
                 # Actually run the session
                 results = run_agent_testing_session(
-                    st.session_state.selected_persona,
-                    num_goals,
-                    max_turns,
-                    conversations_per_goal,
-                    verbose
+                    persona_id=st.session_state.selected_persona,
+                    num_goals=num_goals,
+                    max_turns=max_turns,
+                    conversations_per_goal=conversations_per_goal,
+                    verbose=True
                 )
 
                 progress_bar.empty()
