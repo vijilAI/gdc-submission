@@ -6,6 +6,7 @@ from agents.shared.creator import CustomReactAgent
 from string import Template
 import os
 import yaml
+import time
 # from dotenv import load_dotenv
 import asyncio
 
@@ -142,58 +143,113 @@ def load_yaml(config_path):
 
 def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goals):
     """
-    Generate a goal using the goal generator agent.
+    Generate a goal using the goal generator agent with retry logic.
     """
+    # Get retry configuration
+    retry_config = goal_generator_dict.get('retries', {}).get('goal_generation', {})
+    max_attempts = retry_config.get('max_attempts', 3)
+    backoff_seconds = retry_config.get('backoff_seconds', 2)
+    timeout_seconds = retry_config.get('timeout_seconds', 30)
+    
     user_prompt_template = Template(goal_generator_dict['templates']['user_prompt'])
     sys_prompt_template = Template(goal_generator_dict['templates']['system_prompt'])
 
     sys_prompt = sys_prompt_template.substitute({'num_goals': num_goals})
     user_prompt = user_prompt_template.substitute(**var_template)
 
-    goal_generator_agent = CustomReactAgent(
-        sys_prompt=sys_prompt,
-        base_url='https://api.together.xyz/v1',
-        api_key=os.getenv('TOGETHER_API_KEY'),
-        model_name=goal_generator_dict['llm']['model'],
-        temperature=goal_generator_dict['llm']['params']['temperature'],
-        thread_id=1
-    )
+    for attempt in range(max_attempts):
+        try:
+            goal_generator_agent = CustomReactAgent(
+                sys_prompt=sys_prompt,
+                base_url='https://api.together.xyz/v1',
+                api_key=os.getenv('TOGETHER_API_KEY'),
+                model_name=goal_generator_dict['llm']['model'],
+                temperature=goal_generator_dict['llm']['params']['temperature'],
+                thread_id=1
+            )
 
-    goal_list_text = goal_generator_agent.chat(user_prompt)
-    try:
-        # The output is now expected to be a dict with a 'goals' key
-        goals_dict = JsonOutputParser().parse(goal_list_text)
-    except Exception as e:
-        print(f"Error parsing goal list: {e}")
-        print(f"Goal list text: {goal_list_text}")
-        return None
-    return goals_dict
+            goal_list_text = goal_generator_agent.chat(user_prompt)
+            
+            # Parse the output
+            goals_dict = JsonOutputParser().parse(goal_list_text)
+            
+            # Validate that we got the expected structure
+            if 'goals' in goals_dict and isinstance(goals_dict['goals'], list):
+                print(f"Successfully generated {len(goals_dict['goals'])} goals on attempt {attempt + 1}")
+                return goals_dict
+            else:
+                raise ValueError("Invalid goals structure returned")
+                
+        except Exception as e:
+            print(f"Goal generation attempt {attempt + 1}/{max_attempts} failed: {e}")
+            if attempt < max_attempts - 1:
+                print(f"Retrying in {backoff_seconds} seconds...")
+                time.sleep(backoff_seconds)
+                # Exponential backoff
+                backoff_seconds *= 2
+            else:
+                print("All goal generation attempts failed")
+                return None
+    
+    return None
 
 
 def generate_seed_prompt(user_config_dict, var_template, agent_config_dict, goal):
     """
-    Generate a seed prompt using the redteamer agent.
+    Generate a seed prompt using the redteamer agent with retry logic.
     """
-    sysprompt_redteamer_seed = Template(user_config_dict['templates']['role_and_task_prompt']).substitute(var_template) + '\n\n' + user_config_dict['templates']['job_description_prompt']
-    userprompt_redteamer_seed = Template(user_config_dict['templates']['user_prompt']).substitute(agent_sys_prompt=agent_config_dict['templates']['system_prompt'], goal=goal)
-
-    seed_prompt_agent = CustomReactAgent(
-        sys_prompt=sysprompt_redteamer_seed,
-        base_url='https://api.together.xyz/v1',
-        api_key=os.getenv('TOGETHER_API_KEY'),
-        model_name=user_config_dict['llm']['model'],
-        temperature=user_config_dict['llm']['params']['temperature'],
-        thread_id=2
+    # Get retry configuration
+    retry_config = user_config_dict.get('retries', {}).get('seed_prompt_generation', {})
+    max_attempts = retry_config.get('max_attempts', 3)
+    backoff_seconds = retry_config.get('backoff_seconds', 1)
+    timeout_seconds = retry_config.get('timeout_seconds', 20)
+    
+    # Prepare prompts
+    role_task_template = user_config_dict['templates']['role_and_task_prompt']
+    job_desc_template = user_config_dict['templates']['job_description_prompt']
+    user_prompt_template = user_config_dict['templates']['user_prompt']
+    
+    sysprompt_redteamer_seed = Template(role_task_template).substitute(var_template) + '\n\n' + job_desc_template
+    userprompt_redteamer_seed = Template(user_prompt_template).substitute(
+        agent_sys_prompt=agent_config_dict['templates']['system_prompt'], 
+        goal=goal
     )
 
-    seed_prmopt_chat = seed_prompt_agent.chat(userprompt_redteamer_seed)
-    try:
-        seed_prompt = JsonOutputParser().parse(seed_prmopt_chat)['seed_prompt']
-    except Exception as e:
-        print(f"Error parsing seed prompt: {e}")
-        print(f"Seed prompt chat: {seed_prmopt_chat}")
-        return None
-    return seed_prompt
+    for attempt in range(max_attempts):
+        try:
+            seed_prompt_agent = CustomReactAgent(
+                sys_prompt=sysprompt_redteamer_seed,
+                base_url='https://api.together.xyz/v1',
+                api_key=os.getenv('TOGETHER_API_KEY'),
+                model_name=user_config_dict['llm']['model'],
+                temperature=user_config_dict['llm']['params']['temperature'],
+                thread_id=2
+            )
+
+            seed_prompt_chat = seed_prompt_agent.chat(userprompt_redteamer_seed)
+            
+            # Parse the output
+            parsed_result = JsonOutputParser().parse(seed_prompt_chat)
+            
+            if 'seed_prompt' in parsed_result:
+                seed_prompt = parsed_result['seed_prompt']
+                print(f"Successfully generated seed prompt on attempt {attempt + 1}")
+                return seed_prompt
+            else:
+                raise ValueError("No 'seed_prompt' key in response")
+                
+        except Exception as e:
+            print(f"Seed prompt generation attempt {attempt + 1}/{max_attempts} failed: {e}")
+            if attempt < max_attempts - 1:
+                print(f"Retrying in {backoff_seconds} seconds...")
+                time.sleep(backoff_seconds)
+                # Exponential backoff
+                backoff_seconds *= 2
+            else:
+                print("All seed prompt generation attempts failed")
+                return None
+    
+    return None
 
 def create_agent(agent_config_dict, thread_id):
     """

@@ -304,81 +304,15 @@ async def run_virtual_user_testing(request: VirtualUserTestingRequest):
 async def run_single_persona_session(
     batch_id: str, persona_id: str, session_kwargs: dict
 ):
-    """Run a session for a single persona and update status"""
-    try:
-        # Update status to running
-        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "status": "running",
-            "progress": 10,
-            "message": "Starting session...",
-            "started_at": datetime.now().isoformat()
-        })
-        
-        # Prepare persona config
-        if DB_AVAILABLE and session_kwargs.get('use_db', True):
-            persona_obj = persona_db.get_persona_by_id(persona_id)
-            if persona_obj:
-                persona_config = persona_obj.to_dict()
-            else:
-                raise Exception(f"Persona {persona_id} not found in database")
-        else:
-            raise Exception("Database not available for persona lookup")
-        
-        session_kwargs['persona_config'] = persona_config
-        
-        # Update progress
-        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "progress": 30,
-            "message": "Generating goals..."
-        })
-        
-        # Run the session
-        output = await run_session_from_config(**session_kwargs)
-        
-        # Update progress
-        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "progress": 80,
-            "message": "Saving session data..."
-        })
-        
-        # Convert output to be JSON serializable
-        serializable_output = to_serializable(output)
-        
-        # Save session to database
-        session_id = None
-        if session_kwargs.get('use_db', True) and DB_AVAILABLE:
-            new_session = SessionModel(
-                persona_id=persona_id,
-                num_goals=session_kwargs.get('num_goals'),
-                max_turns=session_kwargs.get('max_turns'),
-                conversations_per_goal=session_kwargs.get('conversations_per_goal'),
-                session_data=json.dumps(serializable_output)
-            )
-            created_session = session_db.create_session(new_session)
-            session_id = created_session.id
-        
-        # Update status to completed
-        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "status": "completed",
-            "progress": 100,
-            "message": "Session completed successfully",
-            "session_id": session_id,
-            "completed_at": datetime.now().isoformat()
-        })
-        
-    except Exception as e:
-        # Update status to failed
-        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
-            "status": "failed",
-            "progress": 0,
-            "message": f"Session failed: {str(e)}",
-            "error": str(e),
-            "completed_at": datetime.now().isoformat()
-        })
+    """Legacy function - replaced by run_single_persona_session_async"""
+    # This function is no longer used but kept for backwards compatibility
+    pass
 
 
-async def run_multi_persona_sessions_background(batch_id: str, request: MultiPersonaTestingRequest):
-    """Run sessions for multiple personas in background"""
+async def run_multi_persona_sessions_background(
+    batch_id: str, request: MultiPersonaTestingRequest
+):
+    """Run sessions for multiple personas in background with concurrency control"""
     try:
         # Get absolute paths relative to the API directory
         api_dir = os.path.dirname(__file__)
@@ -410,14 +344,35 @@ async def run_multi_persona_sessions_background(batch_id: str, request: MultiPer
         if request.conversations_per_goal is not None:
             session_kwargs['conversations_per_goal'] = request.conversations_per_goal
         
-        # Run sessions for each persona concurrently
-        tasks = []
-        for persona_id in request.persona_ids:
-            task = run_single_persona_session(batch_id, persona_id, session_kwargs.copy())
-            tasks.append(task)
+        # Concurrency control: limit to 3 concurrent persona sessions
+        # This prevents overwhelming the system and API rate limits
+        MAX_CONCURRENT_PERSONAS = 3
+        semaphore = asyncio.Semaphore(MAX_CONCURRENT_PERSONAS)
         
-        # Wait for all sessions to complete
+        # Storage for completed session data (for batch database writes)
+        completed_sessions = []
+        session_lock = asyncio.Lock()
+        
+        async def run_persona_with_concurrency_control(persona_id: str):
+            """Run a single persona session with concurrency control"""
+            async with semaphore:  # Limit concurrent executions
+                session_data = await run_single_persona_session_async(
+                    batch_id, persona_id, session_kwargs.copy(),
+                    completed_sessions, session_lock
+                )
+                return session_data
+        
+        # Create tasks for all personas
+        tasks = [
+            run_persona_with_concurrency_control(persona_id)
+            for persona_id in request.persona_ids
+        ]
+        
+        # Wait for all sessions to complete with exception handling
         await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Batch database write for all completed sessions
+        await batch_write_sessions_to_db(completed_sessions)
         
         # Update overall batch status
         persona_statuses = multi_session_status[batch_id]["persona_statuses"]
@@ -438,6 +393,116 @@ async def run_multi_persona_sessions_background(batch_id: str, request: MultiPer
         multi_session_status[batch_id]["overall_status"] = "failed"
         multi_session_status[batch_id]["error"] = str(e)
         multi_session_status[batch_id]["completed_at"] = datetime.now().isoformat()
+
+
+async def run_single_persona_session_async(
+    batch_id: str, persona_id: str, session_kwargs: dict, 
+    completed_sessions: list, session_lock: asyncio.Lock
+):
+    """Run a session for a single persona and update status (async version)"""
+    try:
+        # Update status to running
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Starting session...",
+            "started_at": datetime.now().isoformat()
+        })
+        
+        # Prepare persona config
+        if DB_AVAILABLE and session_kwargs.get('use_db', True):
+            persona_obj = persona_db.get_persona_by_id(persona_id)
+            if persona_obj:
+                persona_config = persona_obj.to_dict()
+            else:
+                raise Exception(f"Persona {persona_id} not found in database")
+        else:
+            raise Exception("Database not available for persona lookup")
+        
+        session_kwargs['persona_config'] = persona_config
+        
+        # Update progress
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "progress": 30,
+            "message": "Generating goals and running conversations..."
+        })
+        
+        # Run the session (this is now fully async including conversations)
+        output = await run_session_from_config(**session_kwargs)
+        
+        # Update progress
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "progress": 80,
+            "message": "Processing session data..."
+        })
+        
+        # Convert output to be JSON serializable
+        serializable_output = to_serializable(output)
+        
+        # Prepare session data for batch database write
+        session_data = {
+            'persona_id': persona_id,
+            'num_goals': session_kwargs.get('num_goals'),
+            'max_turns': session_kwargs.get('max_turns'),
+            'conversations_per_goal': session_kwargs.get('conversations_per_goal'),
+            'session_data': json.dumps(serializable_output)
+        }
+        
+        # Thread-safe addition to completed sessions list
+        async with session_lock:
+            completed_sessions.append(session_data)
+        
+        # Update status to completed (session_id will be set after batch write)
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Session completed successfully",
+            "completed_at": datetime.now().isoformat()
+        })
+        
+        return serializable_output
+        
+    except Exception as e:
+        # Update status to failed
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "failed",
+            "progress": 0,
+            "message": f"Session failed: {str(e)}",
+            "error": str(e),
+            "completed_at": datetime.now().isoformat()
+        })
+        return None
+
+
+async def batch_write_sessions_to_db(completed_sessions: list):
+    """Batch write all completed sessions to database"""
+    if not completed_sessions or not DB_AVAILABLE:
+        return
+    
+    try:
+        # Create all session models
+        session_models = []
+        for session_data in completed_sessions:
+            session_model = SessionModel(**session_data)
+            session_models.append(session_model)
+        
+        # Batch create sessions in database
+        created_sessions = session_db.create_sessions_batch(session_models)
+        
+        # Update session IDs in status tracking
+        for i, created_session in enumerate(created_sessions):
+            persona_id = completed_sessions[i]['persona_id']
+            # Find the batch that contains this persona
+            for batch_id, batch_data in multi_session_status.items():
+                if persona_id in batch_data.get("persona_statuses", {}):
+                    multi_session_status[batch_id]["persona_statuses"][persona_id]["session_id"] = created_session.id
+                    break
+        
+        print(f"✅ Batch created {len(created_sessions)} sessions in database")
+        
+    except Exception as e:
+        print(f"❌ Error in batch database write: {e}")
+        # Don't fail the entire batch for database write issues
 
 
 @app.post("/run-multi-persona-testing", response_model=MultiPersonaTestingResponse)

@@ -740,14 +740,6 @@ def main():
                 help="Number of goals to generate for the session"
             )
             
-            max_turns = st.slider(
-                "Maximum Turns",
-                min_value=1,
-                max_value=10,
-                value=5,
-                help="Maximum number of conversation turns"
-            )
-            
             conversations_per_goal = st.slider(
                 "Conversations per Goal",
                 min_value=1,
@@ -756,6 +748,14 @@ def main():
                 help="Number of conversations to run for each goal"
             )
         
+            max_turns = st.slider(
+                "Maximum Turns",
+                min_value=1,
+                max_value=10,
+                value=5,
+                help="Maximum number of conversation turns"
+            )
+            
         with col2:
             st.markdown("### Testing Session Preview")
             preview_data = {
