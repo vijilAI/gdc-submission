@@ -795,18 +795,16 @@ def main():
         if sessions:
             # Now need to load personas to display demographic info
             df = pd.DataFrame(sessions)
-            if 'personas_full' not in st.session_state:
-                with st.spinner("Fetching details for all personas..."):
-                    personas_full = [
-                        get_persona_details(p['id'])
-                        for p in st.session_state.personas if p
-                    ]
-                    st.session_state.personas_full = [
-                        p for p in personas_full if p
-                    ]
+            if 'personas' not in st.session_state or not st.session_state.personas:
+                with st.spinner("Loading personas..."):
+                    st.session_state.personas = load_personas()
+            
+            if st.session_state.personas:
+                # Use the personas directly since they now include full details
+                personas_full = st.session_state.personas
 
-
-            personas_full = st.session_state.get('personas_full', [])
+            else:
+                personas_full = st.session_state.get('personas_full', [])
             personas_df = pd.DataFrame(personas_full)
             if 'demographic_info' in personas_df.columns:
                 # Flatten the 'demographic_info' column into separate columns
@@ -833,14 +831,19 @@ def main():
                                 }
             options = [None] + list(demographic_key_map2.keys())
             attribute_selected = st.selectbox("Select Demographic Attribute", options=options)
+
+            text_to_analysze = st.selectbox("Select Type of Text", options = [None, 'goals', 'conversations'])
             
-            if attribute_selected:
+            if attribute_selected and text_to_analysze:
                 # Map the selected attribute to the actual column name
                 attribute = demographic_key_map2.get(attribute_selected, attribute_selected)
                 unique_values = merged_df[attribute].dropna().unique()
                 unique_values = sorted(unique_values)
 
+
+                output_goals = {}
                 output_all_text = {}
+                output_all = {}
 
                 # Generate and display a word cloud for each unique value
                 for value in unique_values:
@@ -852,19 +855,24 @@ def main():
                     # text_data = " ".join(filtered_data['persona_id'].dropna().astype(str))  # Replace 'persona_id' with relevant text column
                     
                     text_data = ""
+                    goal_text = ""
                     for session_filtered in filtered_data['session_data'].dropna():
-                        # print(session_filtered)
-                        # print(session_filtered['good_faith'][0])
-                        if isinstance(session_filtered, dict) and 'turns' in session_filtered['good_faith'][0]:
-                            # print('looking around')
-                            all_turns = session_filtered['good_faith'][0]['turns']
-                            my_str = "\n".join([f"{x['role']} : {x['content']}" for x in all_turns])
-                            text_data += my_str
-                    # Generate the word cloud
+                        for goal_name, goal_info in session_filtered.items():
+                            for conversations in goal_info:
+                                goal = conversations.get('goal', '')
+                                all_turns = conversations.get('turns', [])
+                                my_str = "\n".join([f"{x['role']} : {x['content']}" for x in all_turns])
+                                text_data += f"Goal: {goal}\n{my_str}\n\n"
+                            goal_text += f"{goal} \n\n"
                     output_all_text[value] = text_data
+                    output_goals[value] = goal_text
 
+                document_list = []
+
+                if text_to_analysze == 'goals':
+                    document_list = list(output_goals.values())
+                elif text_to_analysze == 'conversations':
                     document_list = list(output_all_text.values())
-                    print(len(document_list))
 
                 vectorizer = TfidfVectorizer(stop_words='english')
                 tfidf_matrix = vectorizer.fit_transform(document_list)
