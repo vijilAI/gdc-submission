@@ -5,9 +5,12 @@ import os
 # API endpoint
 API_URL = "http://localhost:8000"
 
-def run_red_teaming_session(persona_fname, target_agent_config=None, num_goals=None, max_turns=None, verbose=True):
+def run_virtual_user_testing_session(
+    persona_fname, target_agent_config=None, num_goals=None,
+    max_turns=None, verbose=True
+):
     """
-    Example function to call the red teaming API
+    Example function to call the virtual user testing API
     """
     payload = {
         "persona_fname": persona_fname,
@@ -21,7 +24,9 @@ def run_red_teaming_session(persona_fname, target_agent_config=None, num_goals=N
     if max_turns:
         payload["max_turns"] = max_turns
     
-    response = requests.post(f"{API_URL}/run-red-teaming-session", json=payload)
+    response = requests.post(
+        f"{API_URL}/run-virtual-user-testing", json=payload
+    )
     return response.json()
 
 # Example usage
@@ -30,7 +35,7 @@ if __name__ == "__main__":
     persona_file = os.path.join('baseline_personas', '2d33bd32-ca14-4ab2-813e-8b1eb0fea04d_English.json')
     
     try:
-        result = run_red_teaming_session(
+        result = run_virtual_user_testing_session(
             persona_fname=persona_file,
             num_goals=5,
             max_turns=10

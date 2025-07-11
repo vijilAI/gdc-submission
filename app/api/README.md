@@ -4,7 +4,7 @@ This directory contains the API components for the GDC Persona Application.
 
 ## Files
 
-- `api.py` - Main FastAPI application with endpoints for red teaming sessions
+- `api.py` - Main FastAPI application with endpoints for virtual user testing sessions
 - `run_api.py` - Script to start the API server
 - `example_api_usage.py` - Example usage of the API endpoints
 
@@ -32,8 +32,8 @@ The API will be available at `http://localhost:8000`
 - **GET** `/health` - Check if the API is running
 - Response: `{"status": "healthy"}`
 
-#### Red Teaming Session
-- **POST** `/run-red-teaming-session` - Run a red teaming session with a persona
+#### Virtual User Testing Session
+- **POST** `/run-virtual-user-testing` - Run a virtual user testing session with a persona
 - Request body:
   ```json
   {
@@ -74,7 +74,7 @@ session_data = {
     "use_db": True
 }
 
-response = requests.post("http://localhost:8000/run-red-teaming-session", json=session_data)
+response = requests.post("http://localhost:8000/run-virtual-user-testing", json=session_data)
 
 # Or run a session using JSON file path
 session_data_file = {
@@ -84,7 +84,7 @@ session_data_file = {
     "use_db": False
 }
 
-response = requests.post("http://localhost:8000/run-red-teaming-session", json=session_data_file)
+response = requests.post("http://localhost:8000/run-virtual-user-testing", json=session_data_file)
 result = response.json()
 
 if result["success"]:
@@ -138,7 +138,7 @@ The `personas` table contains:
 # In run_session calls
 result = await run_session_from_config(
     persona_config="2d33bd32-ca14-4ab2-813e-8b1eb0fea04d_English",
-    target_agent_config="configs/nora.yaml",
+    target_agent_config="configs/alex.yaml",
     use_db=True  # Default
 )
 ```
@@ -147,7 +147,7 @@ result = await run_session_from_config(
 ```python
 result = await run_session_from_config(
     persona_config="path/to/persona.json",
-    target_agent_config="configs/nora.yaml", 
+    target_agent_config="configs/alex.yaml", 
     use_db=False
 )
 ```

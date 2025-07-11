@@ -1,4 +1,6 @@
-from agents.base_types import Persona, Conversation, ConversationTurn, RedTeamingSession
+from agents.base_types import (
+    Persona, VirtualUserTestingSession
+)
 from agents.shared.creator import CustomReactAgent
 
 from string import Template
@@ -8,13 +10,16 @@ import yaml
 
 # load_dotenv(".env")
 
-import json
 from langchain_core.output_parsers import JsonOutputParser
 
 
-async def run_session_from_config(persona_config, target_agent_config, goal_generator_config=None, redteamer_config=None, num_goals = 1, verbose = False, max_turns = 1, use_db=True):
+async def run_session_from_config(
+    persona_config, target_agent_config, goal_generator_config=None,
+    redteamer_config=None, num_goals=1, verbose=False, max_turns=1,
+    conversations_per_goal=1, use_db=True
+):
     """
-    Main function to run the red teaming session.
+    Main function to run the virtual user testing session.
     
     :param persona_config: Either a path to JSON file or persona ID for database lookup
     :param use_db: If True, treat persona_config as persona ID for database lookup
@@ -25,14 +30,14 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
     # Set default configs with absolute paths
     if goal_generator_config is None:
         goal_generator_config = os.path.join(
-            src_dir, 'configs', 'simulacra_goal_generator.yaml'
+            src_dir, 'configs', 'goal_generator.yaml'
         )
     elif not os.path.isabs(goal_generator_config):
         goal_generator_config = os.path.join(src_dir, goal_generator_config)
         
     if redteamer_config is None:
         redteamer_config = os.path.join(
-            src_dir, 'configs', 'simulacra_redteamer.yaml'
+            src_dir, 'configs', 'tester.yaml'
         )
     elif not os.path.isabs(redteamer_config):
         redteamer_config = os.path.join(src_dir, redteamer_config)
@@ -70,26 +75,47 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
         print("Failed to generate goals. Exiting session.")
         return {}
     
-    good_faith_goal = goal_dict['good_faith'][0]  # Example: Get the first good faith goal
-    bad_faith_goal = goal_dict['bad_faith'][0]  # Example: Get the first bad faith goal
-    goals = {'good_faith' : good_faith_goal, 'bad_faith' : bad_faith_goal}
+    # Use the simplified goal structure - just a list of realistic goals
+    goals_list = goal_dict.get('goals', [])
+    if not goals_list:
+        print("No goals generated. Exiting session.")
+        return {}
+    
+    # Create a result dict to store conversations for each goal
     result_dict = {}
-    for (goal_type, goal) in goals.items():
-        seed_prompt = generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal)
-        if seed_prompt is None:
-            print("Error generating seed prompt. Skipping.")
-            continue
+    for i, goal in enumerate(goals_list):
+        goal_conversations = []
+        
+        for conv_idx in range(conversations_per_goal):
+            seed_prompt = generate_seed_prompt(
+                redteamer_config_dict, var_template, agent_config_dict, goal
+            )
+            if seed_prompt is None:
+                print(f"Error generating seed prompt for goal {i+1}, "
+                      f"conversation {conv_idx+1}. Skipping.")
+                continue
 
-        sut_agent = create_agent(agent_config_dict, thread_id="3")
-        red_teamer_agent = create_red_teamer_agent(redteamer_config_dict, var_template, goal, thread_id="4")
+            # Use unique thread IDs for each conversation
+            thread_suffix = f"{i}_{conv_idx}"
+            sut_agent = create_agent(
+                agent_config_dict, thread_id=f"sut_{thread_suffix}"
+            )
+            virtual_user_agent = create_virtual_user_agent(
+                redteamer_config_dict, var_template, goal,
+                thread_id=f"virtual_user_{thread_suffix}"
+            )
 
-        red_teaming_session = RedTeamingSession(
-            sut_agent=sut_agent,
-            redteamer_agent=red_teamer_agent,
-        )
+            testing_session = VirtualUserTestingSession(
+                sut_agent=sut_agent,
+                virtual_user_agent=virtual_user_agent,
+            )
 
-        await red_teaming_session.run_conversation(goal, seed_prompt, max_turns=max_turns, verbose = verbose)
-        result_dict[goal_type] = red_teaming_session.conversation_history
+            conversation = await testing_session.run_conversation(
+                goal, seed_prompt, max_turns=max_turns, verbose=verbose
+            )
+            goal_conversations.append(conversation)
+            
+        result_dict[f"goal_{i+1}"] = goal_conversations
     return result_dict
 
 
@@ -122,13 +148,13 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
 
     goal_list_text = goal_generator_agent.chat(user_prompt)
     try:
-        goals_dict = JsonOutputParser().parse(goal_list_text)['goals']
+        # The output is now expected to be a dict with a 'goals' key
+        goals_dict = JsonOutputParser().parse(goal_list_text)
     except Exception as e:
         print(f"Error parsing goal list: {e}")
         print(f"Goal list text: {goal_list_text}")
         return None
     return goals_dict
-    # return goals_dict['bad_faith'][1]
 
 
 def generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal):
@@ -170,17 +196,24 @@ def create_agent(agent_config_dict, thread_id):
     )
 
 
-def create_red_teamer_agent(redteamer_config_dict, var_template, goal, thread_id):
+def create_virtual_user_agent(
+    virtual_user_config_dict, var_template, goal, thread_id
+):
     """
-    Create a CustomReactAgent for the redteamer agent.
+    Create a CustomReactAgent for the virtual user agent.
     """
-    red_teaming_agent_sys_prompt = Template(redteamer_config_dict['templates']['role_and_task_prompt']).substitute(var_template) + '\n\n' + Template(redteamer_config_dict['templates']['target_goal']).substitute({'goal': goal})
+    virtual_user_agent_sys_prompt = (
+        Template(virtual_user_config_dict['templates']['role_and_task_prompt'])
+        .substitute(var_template) + '\n\n' +
+        Template(virtual_user_config_dict['templates']['target_goal'])
+        .substitute({'goal': goal})
+    )
 
     return CustomReactAgent(
-        sys_prompt=red_teaming_agent_sys_prompt,
+        sys_prompt=virtual_user_agent_sys_prompt,
         base_url='https://api.together.xyz/v1',
         api_key=os.getenv('TOGETHER_API_KEY'),
-        model_name=redteamer_config_dict['llm']['model'],
-        temperature=redteamer_config_dict['llm']['params']['temperature'],
+        model_name=virtual_user_config_dict['llm']['model'],
+        temperature=virtual_user_config_dict['llm']['params']['temperature'],
         thread_id=thread_id
     )
