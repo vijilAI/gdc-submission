@@ -330,7 +330,7 @@ def main():
     st.markdown("""
     <div class="main-header">
         <h1>🤖 GDC Conversational Agent Testing Platform</h1>
-        <p>Interactive virtual user testing interface</p>
+        <h5>Interactive persona-based virtual user testing</h5>
     </div>
     """, unsafe_allow_html=True)
 
@@ -367,16 +367,6 @@ def main():
     if page == "👥 Browse Personas":
         st.header("Available Personas")
 
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.write(
-                "Browse, filter, and select virtual users for testing."
-            )
-        with col2:
-            if st.button("🔄 Refresh Personas", use_container_width=True):
-                st.session_state.personas = load_personas()
-                st.rerun()
-        
         # Load personas on first visit
         if 'personas' not in st.session_state or not st.session_state.personas:
             with st.spinner("Loading personas..."):
@@ -506,8 +496,19 @@ def main():
                     st.session_state.filters = {}
                     st.rerun()
 
-            if st.button("🔍 Filter Personas", use_container_width=True):
-                show_filter_dialog()
+            # Now show the buttons after dialog is defined
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                st.write(
+                    "Browse, filter, and select virtual users for testing."
+                )
+            with col2:
+                if st.button("🔍 Filter Personas", use_container_width=True):
+                    show_filter_dialog()
+            with col3:
+                if st.button("🔄 Refresh Personas", use_container_width=True):
+                    st.session_state.personas = load_personas()
+                    st.rerun()
 
             def persona_matches(p):
                 for key, selected_values in st.session_state.filters.items():
