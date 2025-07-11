@@ -1,5 +1,5 @@
 from agents.base_types import (
-    Persona, VirtualUserTestingSession
+    Persona, VirtualUserSession
 )
 from agents.shared.creator import CustomReactAgent
 
@@ -118,7 +118,7 @@ async def run_session_from_config(
             thread_id=f"virtual_user_{thread_suffix}"
         )
 
-        testing_session = VirtualUserTestingSession(
+        testing_session = VirtualUserSession(
             sut_agent=sut_agent,
             virtual_user_agent=virtual_user_agent,
         )

@@ -6,9 +6,34 @@ from typing import Dict, List, Any
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
+import base64
+import os
 
 # Configuration
 API_BASE = "http://localhost:8000"
+
+def get_base64_image(image_path):
+    """Convert image to base64 string for embedding in HTML."""
+    try:
+        # Try to find the image in the current directory or common locations
+        possible_paths = [
+            image_path,
+            os.path.join(os.path.dirname(__file__), image_path),
+            os.path.join(os.path.dirname(__file__), '..', '..', image_path),
+            os.path.join(os.getcwd(), image_path)
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                with open(path, "rb") as img_file:
+                    return base64.b64encode(img_file.read()).decode()
+        
+        # If image not found, return empty string
+        print(f"Warning: Image {image_path} not found in any of the expected locations")
+        return ""
+    except Exception as e:
+        print(f"Error loading image {image_path}: {e}")
+        return ""
 
 # Set page config
 st.set_page_config(
@@ -386,12 +411,25 @@ def display_conversation_turns(conversation, verbose_mode=True):
 
 def main():
     # Header
-    st.markdown("""
-    <div class="main-header">
-        <h1>🤖 GDC Conversational Agent Testing Platform</h1>
-        <h5>Interactive persona-based virtual user testing</h5>
-    </div>
-    """, unsafe_allow_html=True)
+    logo_base64 = get_base64_image("assets/gdc.png")
+    if logo_base64:
+        st.markdown("""
+        <div class="main-header" style="
+            background: url('data:image/png;base64,{}') center/cover no-repeat;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
+        ">
+            <h1>🤖 Global Dialogues with AI</h1>
+            <h6>Simulating Global User Preferences on AI Interactions</h6>
+        </div>
+        """.format(logo_base64), unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="main-header">
+            <h1>🤖 Global Dialogues with AI</h1>
+            <h6>Simulating Global User Preferences on AI Interactions</h6>
+        </div>
+        """, unsafe_allow_html=True)
 
     # Check API health
     if not check_api_health():
@@ -405,9 +443,32 @@ def main():
 
     # Sidebar for navigation
     st.sidebar.title("Navigation")
+    
+    # Check if page was set by button click
+    if 'current_page' in st.session_state:
+        default_page = st.session_state['current_page']
+        # Clear the session state after using it
+        del st.session_state['current_page']
+    else:
+        default_page = "🏠 Getting Started"
+    
+    page_options = [
+        "🏠 Getting Started", 
+        "👥 Browse Personas", 
+        "🎯 Run Sessions", 
+        "📊 Session Results", 
+        "🔬 Session Analysis"
+    ]
+    
+    try:
+        default_index = page_options.index(default_page)
+    except ValueError:
+        default_index = 0
+    
     page = st.sidebar.radio(
         "Choose a page:",
-        ["👥 Browse Personas", "🎯 Run Testing Session", "📊 Session Results", "🔬 Session Analysis"]
+        page_options,
+        index=default_index
     )
     
     # Initialize session state
@@ -421,6 +482,142 @@ def main():
         st.session_state.viewed_session = None
     if 'multi_session_batch_id' not in st.session_state:
         st.session_state.multi_session_batch_id = None
+     # Page 0: Getting Started (Landing Page)
+    if page == "🏠 Getting Started":
+        st.header("Welcome!")
+        
+        # Load personas for metrics if not already loaded
+        if 'personas' not in st.session_state or not st.session_state.personas:
+            with st.spinner("Loading platform data..."):
+                st.session_state.personas = load_personas()
+        
+        st.markdown("""
+       
+        Global Dialogues with AI simulates **real global users**, based on the Global Dialogues Challenge dataset, interacting with AI systems to understand how people from different cultural, demographic, and linguistic backgrounds might engage with AI assistants.
+        
+        **Key Features:**
+        - 🌍 **Diverse Virtual Users**: Personas representing people from around the world with different backgrounds, languages, and perspectives on AI
+        - 🎯 **Realistic Testing**: Generate contextual goals and run authentic conversations
+        - 📊 **Rich Analysis**: Examine how demographics influence AI interactions
+        - 🔄 **Batch Processing**: Test multiple personas simultaneously for comprehensive insights
+        """)
+        
+        st.markdown("---")
+        
+        # Workflow guide
+        st.subheader("🚀 How to Get Started")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            ### Step 1: Browse Personas
+            - Countries and cultures
+            - Age groups and genders  
+            - Languages and AI perspectives
+            - Religious and community backgrounds
+            """)
+            
+            if st.button("🔍 Browse Personas", type="primary", use_container_width=True):
+                st.session_state['current_page'] = "👥 Browse Personas"
+                st.rerun()
+        
+        with col2:
+            st.markdown("""
+            ### Step 2: Run Sessionss
+            
+            - Select one or multiple personas
+            - Configure conversation parameters
+            - Watch real-time progress as AI conversations unfold
+            - Sessions generate realistic goals and conduct authentic dialogues
+            """)
+            
+            if st.button("🎯 Start Testing", type="secondary", use_container_width=True):
+                st.session_state['current_page'] = "🎯 Run Sessions"
+                st.rerun()
+        
+        st.markdown("---")
+        
+        col3, col4 = st.columns(2)
+        
+        with col3:
+            st.markdown("""
+            ### Step 3: Review Results
+            - View completed conversation transcripts
+            - Export session data for further analysis
+            - See how different personas approach AI interactions
+            """)
+            
+            if st.button("📊 View Results", use_container_width=True):
+                st.session_state['current_page'] = "📊 Session Results"
+                st.rerun()
+        
+        with col4:
+            st.markdown("""
+            ### Step 4: Analyze Patterns
+            - Compare conversations across demographics
+            - Generate word clouds for different groups
+            - Discover cultural patterns in AI interactions
+            """)
+            
+            if st.button("🔬 Analyze Data", use_container_width=True):
+                st.session_state['current_page'] = "🔬 Session Analysis"
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Quick stats if available
+        if st.session_state.personas:
+            personas = st.session_state.personas
+            st.subheader("📈 Platform Overview")
+            
+            # Load sessions for metrics if not loaded
+            if st.session_state.sessions_history is None:
+                with st.spinner("Loading session data..."):
+                    st.session_state.sessions_history = load_sessions()
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Personas", len(personas))
+            
+            with col2:
+                languages = set(p.get('response_language', 'Unknown') for p in personas)
+                st.metric("Languages", len(languages))
+            
+            with col3:
+                countries = set()
+                for p in personas:
+                    country = p.get('demographic_info', {}).get('self identified country', 'Unknown')
+                    countries.add(country)
+                st.metric("Countries", len(countries))
+            
+            with col4:
+                if st.session_state.sessions_history:
+                    st.metric("Completed Sessions", len(st.session_state.sessions_history))
+                else:
+                    st.metric("Completed Sessions", 0)
+        
+        st.markdown("---")
+        
+        # Tips section
+        st.subheader("💡 Pro Tips")
+        with st.expander("Best Practices for Testing", expanded=False):
+            st.markdown("""
+            - **Start Small**: Begin with 2-3 personas to understand the process
+            - **Diverse Selection**: Choose personas from different backgrounds for rich insights
+            - **Parameter Tuning**: Adjust goals and conversation turns based on your research needs
+            - **Regular Analysis**: Review results frequently to identify interesting patterns
+            - **Export Data**: Download session data for deeper statistical analysis
+            """)
+        
+        with st.expander("Understanding the Results", expanded=False):
+            st.markdown("""
+            - **Goals**: Each persona generates realistic conversation objectives based on their background
+            - **Conversations**: Multi-turn dialogues between virtual users and AI systems  
+            - **Progress Tracking**: Real-time updates show which personas are generating goals vs. having conversations
+            - **Cultural Patterns**: Look for differences in how personas from different backgrounds interact with AI
+            """)
     
     # Page 1: Browse Personas
     if page == "👥 Browse Personas":
@@ -566,7 +763,7 @@ def main():
             col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
                 st.write(
-                    "Browse, filter, and select virtual users for testing."
+                    "Browse, filter, and select virtual users."
                 )
             with col2:
                 if st.button("🔍 Filter Personas", use_container_width=True):
@@ -613,14 +810,45 @@ def main():
             active_filters_count = sum(
                 1 for v in st.session_state.filters.values() if v
             )
+            
+            # Check if all filtered personas are selected
+            filtered_persona_ids = {p['id'] for p in filtered_personas}
+            all_filtered_selected = filtered_persona_ids.issubset(st.session_state.selected_personas)
+            
             if active_filters_count > 0:
-                st.info(
-                    f"Showing {len(filtered_personas)} of "
-                    f"{len(personas_full)} personas "
-                    f"({active_filters_count} filters active)"
-                )
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    st.info(
+                        f"Showing {len(filtered_personas)} of "
+                        f"{len(personas_full)} personas "
+                        f"({active_filters_count} filters active)"
+                    )
+                with col2:
+                    if st.button("🗑️ Clear Filters", use_container_width=True):
+                        st.session_state.filters = {}
+                        st.rerun()
+                with col3:
+                    if all_filtered_selected and len(filtered_personas) > 0:
+                        if st.button("❌ Deselect All", use_container_width=True):
+                            st.session_state.selected_personas -= filtered_persona_ids
+                            st.rerun()
+                    else:
+                        if st.button("✅ Select All", use_container_width=True):
+                            st.session_state.selected_personas.update(filtered_persona_ids)
+                            st.rerun()
             else:
-                st.success(f"Showing all {len(filtered_personas)} personas.")
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.success(f"Showing all {len(filtered_personas)} personas.")
+                with col2:
+                    if all_filtered_selected and len(filtered_personas) > 0:
+                        if st.button("❌ Deselect All", use_container_width=True):
+                            st.session_state.selected_personas.clear()
+                            st.rerun()
+                    else:
+                        if st.button("✅ Select All", use_container_width=True):
+                            st.session_state.selected_personas.update(filtered_persona_ids)
+                            st.rerun()
 
             # --- Persona Grid Display ---
             cols = st.columns(3)
@@ -692,9 +920,9 @@ def main():
                 "No personas found. Make sure the database is populated."
             )
 
-    # Page 2: Run Testing Session
-    elif page == "🎯 Run Testing Session":
-        st.header("Configure Agent Testing Session")
+    # Page 2: Run Sessions
+    elif page == "🎯 Run Sessions":
+        st.header("Configure Simulations")
 
         # Check if any persona is selected
         selected_count = len(st.session_state.selected_personas)
@@ -706,16 +934,58 @@ def main():
             )
             st.stop()
 
-        # Show selected personas info
-        selected_personas_list = sorted(list(st.session_state.selected_personas))
-        with st.expander("Selected Personas", expanded=False):
-            for persona_id in selected_personas_list:
-                st.write(f"• {persona_id}")
-        
-        # Session configuration
-        col1, col2 = st.columns(2)
+        # Main layout: 2/3 for overview, 1/3 for configuration
+        col1, col2 = st.columns([2, 1])
         
         with col1:
+            st.subheader("🤖 About the Conversational Agent")
+            st.markdown("""
+            **Alex - Mental Health Assistant** powered by Acme Health AI is a specialized conversational agent focused on mental health support and guidance. 
+            
+            **Key Capabilities:**
+            - 🧠 **Mental Health Expertise**: Comprehensive knowledge of conditions including anxiety, depression, PTSD, bipolar disorder, eating disorders, substance use disorders, and personality disorders
+            - 🌍 **Cultural Sensitivity**: Adapts communication style and provides culturally appropriate mental health information
+            - 📚 **Evidence-Based**: Draws from DSM-5-TR and ICD-11 classifications with access to real-time mental health data
+            - 💬 **Empathetic Communication**: Maintains a warm, conversational tone while providing professional mental health guidance
+            - 🔗 **Resource Integration**: Connects users to authoritative mental health resources and support services
+            
+            **Model**: Meta LLaMA-4-Scout-17B running on Together AI platform with optimized parameters for consistent, helpful responses.
+            """)
+            
+            st.subheader("""🎯 About the Simulations""")
+            st.markdown("""
+            Here's how the simulation process works:
+            
+            **🎯 Goal Generation**
+            - Each persona generates contextual conversation goals based on their cultural background, demographics, and AI perspectives
+            - Goals reflect real-world scenarios that people from different backgrounds might want to discuss with an AI assistant
+            
+            **💬 Conversation Simulation**
+            - Virtual users engage in multi-turn conversations with the AI agent
+            - Each conversation follows the generated goal while maintaining the persona's authentic voice and perspective
+            - Conversations adapt dynamically based on the AI's responses
+            
+            **📊 Data Collection**
+            - All interactions are captured for analysis
+            - Conversation patterns reveal how different demographics approach AI interactions
+            - Results help understand cultural preferences and communication styles
+            
+            **🔬 Analysis Ready**
+            - Sessions generate rich datasets for examining demographic influences on AI conversations
+            - Compare how personas from different countries, age groups, or backgrounds interact differently
+            - Export data for deeper statistical analysis and research
+            """)
+                   
+        with col2:
+            st.subheader("⚙️ Configuration")
+            
+            # Show selected personas info
+            with st.expander("Selected Personas", expanded=False):
+                selected_personas_list = sorted(list(st.session_state.selected_personas))
+                st.write(f"**{len(selected_personas_list)} personas selected:**")
+                for persona_id in selected_personas_list:
+                    st.write(f"• {persona_id}")
+
             num_goals = st.slider(
                 "Number of Goals",
                 min_value=1,
@@ -740,43 +1010,33 @@ def main():
                 help="Maximum number of conversation turns"
             )
             
-        with col2:
-            st.markdown("### Testing Session Preview")
-            preview_data = {
-                "total_personas": len(selected_personas_list),
-                "personas": selected_personas_list[:3] + (["..."] if len(selected_personas_list) > 3 else []),
-                "num_goals": num_goals,
-                "max_turns": max_turns,
-                "conversations_per_goal": conversations_per_goal,
-                "verbose": True
-            }
-            st.json(preview_data)
-        
-        # Run session button
-        button_text = f"🚀 Run User Session(s)"
-        if st.button(
-            button_text,
-            type="primary",
-            use_container_width=True
-        ):
-            # All sessions are now multi-persona (even single persona uses the batch API)
-            with st.spinner("Starting testing session..."):
-                results = run_multi_persona_testing_session(
-                    persona_ids=selected_personas_list,
-                    num_goals=num_goals,
-                    max_turns=max_turns,
-                    conversations_per_goal=conversations_per_goal,
-                    verbose=True
-                )
-                
-                if results.get("success"):
-                    st.session_state.multi_session_batch_id = results.get("batch_id")
-                    st.success(
-                        f"Session started! Batch ID: {results.get('batch_id')}"
+            st.markdown("---")
+            
+            # Run session button
+            button_text = f"🚀 Run User Session(s)"
+            if st.button(
+                button_text,
+                type="primary",
+                use_container_width=True
+            ):
+                # All sessions are now multi-persona (even single persona uses the batch API)
+                with st.spinner("Starting testing session..."):
+                    results = run_multi_persona_testing_session(
+                        persona_ids=selected_personas_list,
+                        num_goals=num_goals,
+                        max_turns=max_turns,
+                        conversations_per_goal=conversations_per_goal,
+                        verbose=True
                     )
-                else:
-                    error_msg = results.get('error', 'Unknown error')
-                    st.error(f"Failed to start session: {error_msg}")
+                    
+                    if results.get("success"):
+                        st.session_state.multi_session_batch_id = results.get("batch_id")
+                        st.success(
+                            f"Session started! Batch ID: {results.get('batch_id')}"
+                        )
+                    else:
+                        error_msg = results.get('error', 'Unknown error')
+                        st.error(f"Failed to start session: {error_msg}")
 
         # Display active batch status if available
         if st.session_state.multi_session_batch_id:
@@ -810,10 +1070,13 @@ def main():
     # Page 3: Session Results
     elif page == "📊 Session Results":
         st.header("Session Results")
+        
+        st.markdown("""
+        View, explore, and export completed conversations. Click beside a session to get started.
+        """)
 
         # Display historical sessions
-        st.subheader("Session History")
-        if st.button("🔄 Refresh History"):
+        if st.button("🔄 Refresh Session History"):
             st.session_state.sessions_history = load_sessions()
             st.session_state.viewed_session = None
             st.rerun()
@@ -873,11 +1136,14 @@ def main():
             display_conversation_results(st.session_state.viewed_session)
     elif page == "🔬 Session Analysis":
         st.header("Session Analysis")
-        st.info(
-            "Examine how different demographic factors influence the types of conversations!. "
+        st.markdown(
+            """
+            Examine how different demographic factors influence the types of conversations!
+            
+            Select a demographic attribute and either conversation goals or conversation transcripts to analyze.
+            """
         )
-        st.subheader("Session History")
-        if st.button("🔄 Refresh History"):
+        if st.button("🔄 Refresh Session History"):
             st.session_state.sessions_history = load_sessions()
             st.session_state.viewed_session = None
             st.rerun()

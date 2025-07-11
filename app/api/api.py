@@ -114,7 +114,7 @@ async def startup_event():
         print("⚠️  Database not available")
 
 
-class VirtualUserTestingRequest(BaseModel):
+class VirtualUserRequest(BaseModel):
     persona_fname: str  # Can be file path or persona ID
     target_agent_config: Optional[str] = None
     num_goals: Optional[int] = None
@@ -164,7 +164,7 @@ class BatchStatusResponse(BaseModel):
     persona_statuses: List[PersonaSessionStatus]
 
 
-class VirtualUserTestingResponse(BaseModel):
+class VirtualUserResponse(BaseModel):
     success: bool
     error: Optional[str] = None
     session_data: Optional[Dict[str, Any]] = None
@@ -191,9 +191,9 @@ class SessionResponse(BaseModel):
 
 @app.post(
     "/run-virtual-user-testing",
-    response_model=VirtualUserTestingResponse
+    response_model=VirtualUserResponse
 )
-async def run_virtual_user_testing(request: VirtualUserTestingRequest):
+async def run_virtual_user_testing(request: VirtualUserRequest):
     """
     Run a virtual user testing session with a specified persona.
     """
@@ -288,14 +288,14 @@ async def run_virtual_user_testing(request: VirtualUserTestingRequest):
             created_session = session_db.create_session(new_session)
             session_id = created_session.id
 
-        return VirtualUserTestingResponse(
+        return VirtualUserResponse(
             success=True,
             session_data=serializable_output,
             session_id=session_id
         )
         
     except Exception as e:
-        return VirtualUserTestingResponse(
+        return VirtualUserResponse(
             success=False,
             error=str(e)
         )

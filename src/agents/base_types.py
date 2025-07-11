@@ -136,7 +136,7 @@ class Persona:
 
 
 @dataclass
-class VirtualUserTestingSession:
+class VirtualUserSession:
     """
     A class to manage a conversation session between a system under test (SUT)
     agent and a virtual user agent.
