@@ -381,23 +381,17 @@ def display_conversation_turns(conversation, verbose_mode=True):
             content = turn.get('content', '')
             turn_id = turn.get('id', '')
 
-            # Truncate content if in verbose mode
-            if verbose_mode and len(content) > 100:
-                display_content = content[:100] + "..."
-            else:
-                display_content = content
-
             # Style based on role
             if role.lower() == 'user':
                 st.markdown(
                     f"**👤 Virtual User ({turn_id}):**"
                 )
-                st.markdown(f"> {display_content}")
+                st.markdown(f"> {content}")
             else:
                 st.markdown(
                     f"**🤖 Agent ({turn_id}):**"
                 )
-                st.markdown(f"> {display_content}")
+                st.markdown(f"> {content}")
 
             st.markdown("---")
     else:

@@ -60,7 +60,25 @@ class CustomReactAgent():
     def chat(self, prompt: str):
         responses = self.get_messages(prompt)
         return responses[-1].content
+    
+    async def chat_async(self, prompt: str) -> str:
+        """
+        Asynchronously pass a prompt to the agent and get the response.
+        
+        :param prompt: The prompt to send to the agent.
+        :return: The response from the agent.
+        """
+        # Update the graph's state with the provided prompt
+        self.graph.update_state(self.thread_config, {"messages": [SystemMessage(content=self.sys_prompt), {"role": "user", "content": prompt}]})
 
+        # Generate a response based on the updated state
+        responses = []
+        async for chunk in self.graph.astream({"messages": [{"role": "user", "content": prompt}]}, config=self.thread_config, stream_mode="values"):
+            msg = chunk["messages"][-1]
+            responses.append(msg)
+
+        # Return the final response content
+        return responses[-1].content
 
     def chat_with_messages(self, message: Dict[str, Any]) -> str:
         """

@@ -7,6 +7,7 @@ from string import Template
 import os
 import yaml
 # from dotenv import load_dotenv
+import asyncio
 
 # load_dotenv(".env")
 
@@ -15,7 +16,7 @@ from langchain_core.output_parsers import JsonOutputParser
 
 async def run_session_from_config(
     persona_config, target_agent_config, goal_generator_config=None,
-    redteamer_config=None, num_goals=1, verbose=False, max_turns=1,
+    user_config=None, num_goals=1, verbose=False, max_turns=1,
     conversations_per_goal=1, use_db=True
 ):
     """
@@ -35,16 +36,16 @@ async def run_session_from_config(
     elif not os.path.isabs(goal_generator_config):
         goal_generator_config = os.path.join(src_dir, goal_generator_config)
         
-    if redteamer_config is None:
-        redteamer_config = os.path.join(
+    if user_config is None:
+        user_config = os.path.join(
             src_dir, 'configs', 'tester.yaml'
         )
-    elif not os.path.isabs(redteamer_config):
-        redteamer_config = os.path.join(src_dir, redteamer_config)
+    elif not os.path.isabs(user_config):
+        user_config = os.path.join(src_dir, user_config)
 
     goal_generator_dict = load_yaml(goal_generator_config)
     agent_config_dict = load_yaml(target_agent_config)
-    redteamer_config_dict = load_yaml(redteamer_config)
+    user_config_dict = load_yaml(user_config)
 
     # Load persona from database or JSON file
     if use_db:
@@ -83,39 +84,51 @@ async def run_session_from_config(
     
     # Create a result dict to store conversations for each goal
     result_dict = {}
-    for i, goal in enumerate(goals_list):
-        goal_conversations = []
+    
+    # async task to run conversations for each goal
+    async def run_goal_conversations(goal, goal_idx, conv_idx):
+        seed_prompt = generate_seed_prompt(
+            user_config_dict, var_template, agent_config_dict, goal
+        )
+        if seed_prompt is None:
+            print(f"Error generating seed prompt for goal {goal_idx+1}, "
+                  f"conversation {conv_idx+1}. Skipping.")
+            return
         
-        for conv_idx in range(conversations_per_goal):
-            seed_prompt = generate_seed_prompt(
-                redteamer_config_dict, var_template, agent_config_dict, goal
-            )
-            if seed_prompt is None:
-                print(f"Error generating seed prompt for goal {i+1}, "
-                      f"conversation {conv_idx+1}. Skipping.")
-                continue
+        # Use unique thread IDs for each conversation
+        thread_suffix = f"{goal_idx}_{conv_idx}"
+        sut_agent = create_agent(
+            agent_config_dict, thread_id=f"sut_{thread_suffix}"
+        )
+        virtual_user_agent = create_virtual_user_agent(
+            user_config_dict, var_template, goal,
+            thread_id=f"virtual_user_{thread_suffix}"
+        )
 
-            # Use unique thread IDs for each conversation
-            thread_suffix = f"{i}_{conv_idx}"
-            sut_agent = create_agent(
-                agent_config_dict, thread_id=f"sut_{thread_suffix}"
-            )
-            virtual_user_agent = create_virtual_user_agent(
-                redteamer_config_dict, var_template, goal,
-                thread_id=f"virtual_user_{thread_suffix}"
-            )
+        testing_session = VirtualUserTestingSession(
+            sut_agent=sut_agent,
+            virtual_user_agent=virtual_user_agent,
+        )
 
-            testing_session = VirtualUserTestingSession(
-                sut_agent=sut_agent,
-                virtual_user_agent=virtual_user_agent,
-            )
-
-            conversation = await testing_session.run_conversation(
-                goal, seed_prompt, max_turns=max_turns, verbose=verbose
-            )
-            goal_conversations.append(conversation)
-            
-        result_dict[f"goal_{i+1}"] = goal_conversations
+        conversation = await testing_session.run_conversation(
+            goal, seed_prompt, max_turns=max_turns, verbose=verbose
+        )
+        return {"goal": goal, "goal_idx": goal_idx, "conversation": conversation}
+    tasks = [
+        run_goal_conversations(goal, i, conv_idx)
+        for i, goal in enumerate(goals_list)
+        for conv_idx in range(conversations_per_goal)
+    ]
+    conversation_list = await asyncio.gather(*tasks)
+    
+    # store conversations in result_dict
+    for conv in conversation_list:
+        if conv is not None:
+            goal_idx = conv['goal_idx']
+            conversation = conv['conversation']
+            if f"goal_{goal_idx+1}" not in result_dict:
+                result_dict[f"goal_{goal_idx+1}"] = []
+            result_dict[f"goal_{goal_idx+1}"].append(conversation)
     return result_dict
 
 
@@ -157,19 +170,19 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
     return goals_dict
 
 
-def generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal):
+def generate_seed_prompt(user_config_dict, var_template, agent_config_dict, goal):
     """
     Generate a seed prompt using the redteamer agent.
     """
-    sysprompt_redteamer_seed = Template(redteamer_config_dict['templates']['role_and_task_prompt']).substitute(var_template) + '\n\n' + redteamer_config_dict['templates']['job_description_prompt']
-    userprompt_redteamer_seed = Template(redteamer_config_dict['templates']['user_prompt']).substitute(agent_sys_prompt=agent_config_dict['templates']['system_prompt'], goal=goal)
+    sysprompt_redteamer_seed = Template(user_config_dict['templates']['role_and_task_prompt']).substitute(var_template) + '\n\n' + user_config_dict['templates']['job_description_prompt']
+    userprompt_redteamer_seed = Template(user_config_dict['templates']['user_prompt']).substitute(agent_sys_prompt=agent_config_dict['templates']['system_prompt'], goal=goal)
 
     seed_prompt_agent = CustomReactAgent(
         sys_prompt=sysprompt_redteamer_seed,
         base_url='https://api.together.xyz/v1',
         api_key=os.getenv('TOGETHER_API_KEY'),
-        model_name=redteamer_config_dict['llm']['model'],
-        temperature=redteamer_config_dict['llm']['params']['temperature'],
+        model_name=user_config_dict['llm']['model'],
+        temperature=user_config_dict['llm']['params']['temperature'],
         thread_id=2
     )
 

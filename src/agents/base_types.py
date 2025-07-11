@@ -191,14 +191,10 @@ class VirtualUserTestingSession:
         for i in range(max_turns):
             # Virtual user's turn
             if verbose:
-                print(f"Turn {i+1} - Virtual User's turn")
-                print(f"  Prompt: {current_prompt}")
+                print(f"Turn {i+1} - User: {current_prompt[:20]}...")
             
-            sut_response = self.sut_agent.chat(current_prompt)
-            
-            if verbose:
-                print(f"  SUT Response: {sut_response}")
-            
+            sut_response = await self.sut_agent.chat_async(current_prompt)
+            # sut_response = self.sut_agent.chat(current_prompt)
             conversation.add_turn(
                 role='assistant',
                 id=self.sut_agent.thread_config["configurable"]["thread_id"],
@@ -207,14 +203,12 @@ class VirtualUserTestingSession:
             
             # SUT's turn
             if verbose:
-                print(f"Turn {i+1} - SUT's turn")
-                print(f"  Prompt: {sut_response}")
-            
-            virtual_user_response = self.virtual_user_agent.chat(sut_response)
-            
-            if verbose:
-                print(f"  Virtual User Response: {virtual_user_response}")
-            
+                print(f"Turn {i+1} - Assistant: {sut_response[:20]}...")
+
+            # virtual_user_response = self.virtual_user_agent.chat(sut_response)
+            virtual_user_response = await self.virtual_user_agent.chat_async(
+                sut_response
+            )
             virtual_user_thread_id = (
                 self.virtual_user_agent
                 .thread_config["configurable"]["thread_id"]
