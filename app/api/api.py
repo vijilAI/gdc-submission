@@ -106,8 +106,6 @@ def validate_and_sanitize_path(
             status_code=400,
             detail=f"Invalid path: {user_input}"
         )
-    else:
-        candidate_path = os.path.abspath(sanitized_input)
     
     # Verify the resolved path is within allowed directories
     for allowed_dir in allowed_dirs:
