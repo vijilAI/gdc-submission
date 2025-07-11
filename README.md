@@ -6,9 +6,9 @@ An exploratory platform for understanding how AI conversational agents interact 
 
 - [🌟 Key Features](#-key-features)
 - [🚀 Quick Start](#-quick-start)
-- [🎭 Configuring Different Chatbots](#-configuring-different-chatbots)
 - [📱 Frontend Interface](#-frontend-interface)
-- [🏗️ Architecture](#️-architecture)
+- [�️ Architecture](#️-architecture)
+- [🎭 Configuring Different Chatbots](#-configuring-different-chatbots)
 - [🌍 Understanding Virtual Users](#-understanding-virtual-users)
 - [📊 Analysis and Insights](#-analysis-and-insights)
 - [🔧 Troubleshooting](#-troubleshooting)
@@ -42,11 +42,16 @@ An exploratory platform for understanding how AI conversational agents interact 
    ```
 
 2. **Install dependencies**:
+
+    Create a new virtual environment and install dependencies.
+
    ```bash
-   pip install -r requirements.txt
+   pip install .
    # Or if using Poetry:
    poetry install
    ```
+
+   Activate your virtual environment with your favorite environment manager.
 
 3. **Set up environment variables**:
    ```bash
@@ -56,8 +61,59 @@ An exploratory platform for understanding how AI conversational agents interact 
 
 ### Running the Application
 
-1. **Start the API Server**:
+**Start the API Server**:
+```bash
+python app/api/run_api.py
+```
+The API will be available at `http://localhost:8000`.
+
+After starting the API server, you can interact with it through the frontend or through API calls.
+
+## 📱 Frontend Interface
+
+The Streamlit-based frontend provides an intuitive interface to select your virtual users and run sessions where they interact with the chatbot..
+
+### Navigation Pages
+
+1. **🏠 Getting Started**
+   - Platform overview and quick stats
+   - Workflow guidance and tips
+   - Virtual user statistics and demographics overview
+
+2. **👥 Browse Personas**
+   - View all virtual users in the database
+   - Advanced filtering by demographics, language, opinions about AI
+   - Select personas for exploration sessions
+   - Detailed persona information cards
+
+3. **▶️ Run Sessions**
+   - Configure session parameters (goals, turns, conversations)
+   - Run exploration sessions with selected personas
+   - Real-time progress tracking with visual feedback
+   - Conditional UI: persona selection panel or configuration interface
+
+4. **📊 Session Results**
+   - View conversation results organized by goal type
+   - Export session data as JSON
+   - Browse conversation transcripts
+   - Download results for further analysis
+
+5. **🔬 Session Analysis**
+   - Analyze patterns across demographics
+   - Generate insights from conversation data
+   - Visualize cultural differences in AI interactions
+
+### Frontend Setup and Usage
+
+#### Prerequisites
+
+Make sure you have installed the project dependencies as outlined in the [Installation](#-installation) section.
+
+#### Running the Frontend
+
+1. **Start the API Server** (required):
    ```bash
+   cd /path/to/gdc-submission
    python app/api/run_api.py
    ```
    The API will be available at `http://localhost:8000`
@@ -65,6 +121,11 @@ An exploratory platform for understanding how AI conversational agents interact 
 2. **Start the Streamlit Frontend**:
    ```bash
    cd app/frontend
+   python run_streamlit.py
+   ```
+   
+   Or directly with Streamlit:
+   ```bash
    streamlit run streamlit_app.py --server.port=8501
    ```
 
@@ -210,73 +271,7 @@ with AI systems in [your domain].
    - Select a simple persona (e.g., English-speaking user)
    - Run a short 2-turn conversation to explore functionality
 
-## 📱 Frontend Interface
 
-The Streamlit-based frontend provides an intuitive interface with modern Anthropic-inspired styling for comprehensive virtual user exploration.
-
-### Navigation Pages
-
-1. **🏠 Getting Started**
-   - Platform overview and quick stats
-   - Workflow guidance and tips
-   - Virtual user statistics and demographics overview
-
-2. **👥 Browse Personas**
-   - View all virtual users in the database
-   - Advanced filtering by demographics, language, AI sentiment
-   - Select personas for exploration sessions
-   - Detailed persona information cards
-
-3. **▶️ Run Sessions**
-   - Configure session parameters (goals, turns, conversations)
-   - Run exploration sessions with selected personas
-   - Real-time progress tracking with visual feedback
-   - Conditional UI: persona selection panel or configuration interface
-
-4. **📊 Session Results**
-   - View conversation results organized by goal type
-   - Export session data as JSON
-   - Browse conversation transcripts
-   - Download results for further analysis
-
-5. **🔬 Session Analysis**
-   - Analyze patterns across demographics
-   - Generate insights from conversation data
-   - Visualize cultural differences in AI interactions
-
-### Frontend Setup and Usage
-
-#### Prerequisites
-
-Make sure you have the required dependencies installed:
-
-```bash
-# From the repository root
-pip install streamlit requests pandas
-```
-
-#### Running the Frontend
-
-1. **Start the API Server** (required):
-   ```bash
-   cd /path/to/gdc-submission
-   python app/api/run_api.py
-   ```
-   The API will be available at `http://localhost:8000`
-
-2. **Start the Streamlit Frontend**:
-   ```bash
-   cd app/frontend
-   python run_streamlit.py
-   ```
-   
-   Or directly with Streamlit:
-   ```bash
-   streamlit run streamlit_app.py --server.port=8501
-   ```
-
-3. **Access the Application**:
-   Open your browser and go to `http://localhost:8501`
 
 ## 🏗️ Architecture
 
