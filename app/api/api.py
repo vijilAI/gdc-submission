@@ -324,9 +324,16 @@ async def run_multi_persona_sessions_background(
         if target_agent_config is None:
             target_agent_config = os.path.join(src_dir, 'configs', 'alex.yaml')
         
+        # Normalize the path
+        normalized_path = os.path.normpath(target_agent_config)
+        
+        # Ensure the path is within the expected directory
+        if not normalized_path.startswith(os.path.abspath(src_dir)):
+            raise ValueError(f"Unsafe path detected: {target_agent_config}")
+        
         # Validate target agent config exists
-        if not os.path.exists(target_agent_config):
-            raise Exception(f"Target agent config not found: {target_agent_config}")
+        if not os.path.exists(normalized_path):
+            raise Exception(f"Target agent config not found: {normalized_path}")
         
         # Prepare kwargs for run_session_from_config (without persona_config)
         session_kwargs = {

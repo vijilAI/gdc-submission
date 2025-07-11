@@ -156,9 +156,19 @@ async def run_session_from_config(
 
 def load_yaml(config_path):
     """
-    Load a YAML configuration file.
+    Load a YAML configuration file safely.
     """
-    with open(config_path, "r") as f:
+    # Define the safe root directory
+    src_dir = os.path.dirname(os.path.dirname(__file__))
+    
+    # Normalize the path
+    normalized_path = os.path.normpath(config_path)
+    
+    # Ensure the path is within the expected directory
+    if not normalized_path.startswith(os.path.abspath(src_dir)):
+        raise ValueError(f"Unsafe path detected: {config_path}")
+    
+    with open(normalized_path, "r") as f:
         return yaml.safe_load(f)
 
 
