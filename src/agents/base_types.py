@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from typing import Dict, List, Any
 import json
-
 import uuid
-import re
-from langchain_core.output_parsers import JsonOutputParser
 
 from .shared.creator import CustomReactAgent
+
 
 @dataclass
 class ConversationTurn:
@@ -19,7 +17,6 @@ class Conversation:
     id: str
     goal: str
     turns: List[ConversationTurn]
-    goal_type: str = ""
     
     def add_turn(self, role: str, id: str, content: str):
         """
@@ -37,13 +34,17 @@ class Conversation:
         
         :return: Dictionary representation of the conversation.
         """
-        return { "goal" : self.goal, "turns": [turn.__dict__ for turn in self.turns]}
+        return {
+            "goal": self.goal,
+            "turns": [turn.__dict__ for turn in self.turns]
+        }
     
     def to_list(self) -> list:
         """
         Convert the conversation to a list of dictionaries.
         
-        :return: List of dictionaries representing each turn in the conversation.
+        :return: List of dictionaries representing each turn in the
+                 conversation.
         """
         return [turn.__dict__ for turn in self.turns]
 
@@ -51,9 +52,9 @@ class Conversation:
 @dataclass
 class Persona:
     participant_id: str
-    response_language : str
+    response_language: str
     demographic_info: Dict[str, Any]
-    high_level_AI_view : str
+    high_level_AI_view: str
     survey_responses: Dict[str, str]
     
     @classmethod
@@ -80,7 +81,9 @@ class Persona:
         import os
         
         # Add app/db to path for database imports
-        db_path = os.path.join(os.path.dirname(__file__), '..', '..', 'app', 'db')
+        db_path = os.path.join(
+            os.path.dirname(__file__), '..', '..', 'app', 'db'
+        )
         sys.path.append(os.path.abspath(db_path))
         
         try:
@@ -88,7 +91,9 @@ class Persona:
             persona_model = persona_db.get_persona_by_id(persona_id)
             
             if persona_model is None:
-                raise ValueError(f"Persona with ID '{persona_id}' not found in database")
+                raise ValueError(
+                    f"Persona with ID '{persona_id}' not found in database"
+                )
             
             # Convert database model to dictionary and create Persona instance
             persona_data = persona_model.to_dict()
@@ -109,102 +114,111 @@ class Persona:
     
     def to_template_vars(self) -> Dict[str, Any]:
         """
-        Convert the persona to a dictionary of template variables.
+        Convert Persona to a dictionary of variables for template substitution.
         
-        :return: Dictionary with flattened persona attributes for template substitution.
+        :return: Dictionary with flattened persona attributes for template
+                 substitution.
         """
-        template_vars = {
-            "age_bracket": self.demographic_info["age bracket"],
-            "gender": self.demographic_info["gender"],
+        
+        return {
+            'gender': self.demographic_info['gender'],
+            'age_bracket': self.demographic_info['age bracket'],
             'religion': self.demographic_info['religion'],
-            'country' : self.demographic_info['self identified country'],
-            'community_type' : self.demographic_info['community type'],
-            'true_langauge_preferred' : self.demographic_info['preferred language'],
-            "high_level_AI_view": self.high_level_AI_view,
-            "participant_id": self.participant_id,
-            "response_language": self.response_language,
-            "survey_responses": json.dumps(self.survey_responses, indent=4)
+            'country': self.demographic_info['self identified country'],
+            'community_type': self.demographic_info['community type'],
+            'true_langauge_preferred': (
+                self.demographic_info['preferred language']
+            ),
+            'response_language': self.response_language,
+            'high_level_AI_view': self.high_level_AI_view,
+            'survey_responses': self.survey_responses
         }
-        return template_vars
-    
 
 
+@dataclass
 class RedTeamingSession:
-    def __init__(self, sut_agent: CustomReactAgent, redteamer_agent: CustomReactAgent):
+    def __init__(
+        self, sut_agent: CustomReactAgent, redteamer_agent: CustomReactAgent
+    ):
         """
-        Initialize a red teaming session between a system under test (SUT) agent and a red teamer agent.
+        Initialize a red teaming session between a system under test (SUT) 
+        agent and a red teamer agent.
         
-        :param sut_agent: The system under test agent.
-        :param redteamer_agent: The red teamer agent.
+        :param sut_agent: The agent being tested.
+        :param redteamer_agent: The agent performing the red teaming.
         """
-        self.sut_agent: CustomReactAgent = sut_agent
-        self.redteamer_agent: CustomReactAgent = redteamer_agent
-        self.conversation_history: List[Conversation] = []
-        
-    async def run_conversation(self, goal: str, starting_prompt : str, goal_type: str = "", max_turns: int = 10, verbose: bool = False) -> Conversation:
-        """
-        Run a conversation between the red teamer agent and the system under test.
-        
-        :param max_turns: Maximum number of conversation turns.
-        :param verbose: If True, prints out conversation messages as they occur.
-        :return: The complete conversation.
-        """
-        conversation_id = f"{uuid.uuid4()}"
-        conversation = Conversation(id=conversation_id, goal=goal, goal_type=goal_type, turns=[])
+        self.sut_agent = sut_agent
+        self.redteamer_agent = redteamer_agent
+        self.conversation_history = None
 
+    async def run_conversation(
+        self, goal: str, starting_prompt: str, max_turns: int = 10,
+        verbose: bool = False
+    ) -> Conversation:
+        """
+        Run a conversation between the SUT and red teamer agents.
         
-        messages = [{"role": "user", "content": starting_prompt}]  # Start with seed prompt
-        conversation.add_turn(id = 'redteamer_agent', role = 'user', content = starting_prompt)
-        json_parser = JsonOutputParser()
+        :param goal: The goal of the conversation.
+        :param starting_prompt: The initial prompt to start the conversation.
+        :param max_turns: The maximum number of turns in the conversation.
+        :param verbose: If True, print the conversation turns.
+        :return: The conversation history.
+        """
+        conversation = Conversation(
+            id=str(uuid.uuid4()),
+            goal=goal,
+            turns=[]
+        )
         
+        # Add the seed prompt as the first turn
+        redteamer_thread_id = (
+            self.redteamer_agent.thread_config["configurable"]["thread_id"]
+        )
+        conversation.add_turn(
+            role='user',
+            id=redteamer_thread_id,
+            content=starting_prompt
+        )
+        
+        current_prompt = starting_prompt
+        
+        for i in range(max_turns):
+            # Red teamer's turn
+            if verbose:
+                print(f"Turn {i+1} - Red Teamer's turn")
+                print(f"  Prompt: {current_prompt}")
             
-
-        # Run the conversation for the specified number of turns
-        for turn in range(max_turns):
-            # start with seed prompt
-            sut_response = await self.sut_agent.chat_with_history(messages)
-            sut_message = sut_response
+            sut_response = self.sut_agent.chat(current_prompt)
+            
+            if verbose:
+                print(f"  SUT Response: {sut_response}")
             
             conversation.add_turn(
-                    id='sut_agent',
-                    role="assistant",
-                    content=sut_message
-                )
-            messages.append({"role": "assistant", "content": sut_message})
-            if verbose:
-                print(f"Turn {turn}: \n{self.sut_agent}\n{sut_message}\n")
-
-            
-            redteamer_response = await self.redteamer_agent.chat_with_history(
-                messages,
+                role='assistant',
+                id=self.sut_agent.thread_config["configurable"]["thread_id"],
+                content=sut_response
             )
-            redteamer_message = redteamer_response
+            
+            # SUT's turn
+            if verbose:
+                print(f"Turn {i+1} - SUT's turn")
+                print(f"  Prompt: {sut_response}")
+            
+            redteamer_response = self.redteamer_agent.chat(sut_response)
+            
+            if verbose:
+                print(f"  Red Teamer Response: {redteamer_response}")
+            
+            redteamer_thread_id = (
+                self.redteamer_agent.thread_config["configurable"]["thread_id"]
+            )
             conversation.add_turn(
-                id='redteamer_agent',
-                role="user",
-                content=redteamer_message
+                role='user',
+                id=redteamer_thread_id,
+                content=redteamer_response
             )
-            messages.append({"role": "user", "content": redteamer_message})
-                
-            if verbose:
-                print(f"Turn {turn}: redteamer \n{redteamer_message}\n")
-                
-            # Check if the red teamer has identified untrustworthy behavior
-            try:
-                json_match = re.search(r'({[\s\S]*"goal_achieved"[\s\S]*})', redteamer_message)
-                if json_match:
-                    json_str = json_match.group(1)
-                    result = json_parser.parse(json_str)
-                    if result.get("goal_achieved") == True:
-                        print("stopping")
-                        # Add the conversation to the history and return early
-                        self.conversation_history.append(conversation)
-                        return self
-            except Exception:
-                print("Can't parse")
-                # Continue if we can't parse JSON or it doesn't have the expected format
-                pass
             
-            # Get response from the SUT agent
-                    
-        self.conversation_history.append(conversation)
+            current_prompt = redteamer_response
+            
+        self.conversation_history = conversation
+        return self.conversation_history

@@ -120,7 +120,6 @@ class RedTeamingRequest(BaseModel):
 
 class RedTeamingResponse(BaseModel):
     success: bool
-    good_faith: Optional[Any] = None
     error: Optional[str] = None
     session_data: Optional[Dict[str, Any]] = None
     session_id: Optional[str] = None
@@ -141,7 +140,6 @@ class SessionResponse(BaseModel):
     num_goals: Optional[int] = None
     max_turns: Optional[int] = None
     session_data: Dict[str, Any]
-    good_faith: Optional[Any] = None
 
 
 @app.post("/run-red-teaming-session", response_model=RedTeamingResponse)
@@ -227,17 +225,13 @@ async def run_red_teaming_session(request: RedTeamingRequest):
                 persona_id=persona_id_or_fname,
                 num_goals=request.num_goals,
                 max_turns=request.max_turns,
-                session_data=json.dumps(serializable_output),
-                good_faith=json.dumps(
-                    serializable_output.get('good_faith')
-                )
+                session_data=json.dumps(serializable_output)
             )
             created_session = session_db.create_session(new_session)
             session_id = created_session.id
 
         return RedTeamingResponse(
             success=True,
-            good_faith=serializable_output.get('good_faith'),
             session_data=serializable_output,
             session_id=session_id
         )

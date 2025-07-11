@@ -200,11 +200,22 @@ def display_conversation_results(results: Dict[str, Any]):
 
         for i, goal_type in enumerate(goal_types):
             with tabs[i]:
-                conversations = session_data[goal_type]
+                conversation_data = session_data[goal_type]
 
-                if isinstance(conversations, list) and conversations:
-                    for j, conversation_item in enumerate(conversations):
-                        st.subheader(f"Conversation {j + 1}")
+                # Handle both single conversation objects and lists
+                conversations_to_display = []
+                if isinstance(conversation_data, list):
+                    conversations_to_display = conversation_data
+                elif conversation_data is not None:
+                    # Single conversation object
+                    conversations_to_display = [conversation_data]
+
+                if conversations_to_display:
+                    for j, conversation_item in enumerate(
+                        conversations_to_display
+                    ):
+                        if len(conversations_to_display) > 1:
+                            st.subheader(f"Conversation {j + 1}")
 
                         # Handle different data formats
                         conversation = None
@@ -348,10 +359,10 @@ def main():
 
             # Define the dialog function outside the button click
             # to ensure it's available.
-            @st.dialog("Filter by Demographics")
+            @st.dialog("Filters")
             def show_filter_dialog():
                 """Shows a dialog for filtering personas."""
-                st.subheader("Apply Demographic Filters")
+                st.subheader("Select Filters")
 
                 all_personas = personas_full
 
@@ -370,6 +381,12 @@ def main():
                 # session state directly.
                 current_filters = st.session_state.get('filters', {}).copy()
 
+                high_level_ai_view = st.multiselect(
+                    "Sentiment on AI",
+                    get_unique_values('high_level_AI_view'),
+                    default=current_filters.get('high_level_ai_view', []),
+                    help="Filter by participant's overall attitude toward AI"
+                )
                 age_bracket = st.multiselect(
                     "Age Bracket",
                     get_unique_values('age bracket', is_demographic=True),
@@ -405,6 +422,7 @@ def main():
 
                 # --- Live Filtering for Preview ---
                 temp_filters = {
+                    'high_level_ai_view': high_level_ai_view,
                     'age_bracket': age_bracket,
                     'gender': gender,
                     'religion': religion,
@@ -418,7 +436,10 @@ def main():
                     temp_filtered_personas = all_personas
                     for key, values in temp_filters.items():
                         if values:
-                            if key == 'response_language':
+                            direct_fields = [
+                                'response_language', 'high_level_ai_view'
+                            ]
+                            if key in direct_fields:
                                 temp_filtered_personas = [
                                     p for p in temp_filtered_personas
                                     if p.get(key) in values
@@ -472,6 +493,8 @@ def main():
                         value = p.get('demographic_info', {}).get(
                             'self identified country'
                         )
+                    elif key in ['response_language', 'high_level_ai_view']:
+                        value = p.get(key)
                     else:
                         value = p.get(key)
 

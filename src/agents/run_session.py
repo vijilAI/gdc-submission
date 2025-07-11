@@ -70,26 +70,36 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
         print("Failed to generate goals. Exiting session.")
         return {}
     
-    good_faith_goal = goal_dict['good_faith'][0]  # Example: Get the first good faith goal
-    bad_faith_goal = goal_dict['bad_faith'][0]  # Example: Get the first bad faith goal
-    goals = {'good_faith' : good_faith_goal, 'bad_faith' : bad_faith_goal}
+    # Use the simplified goal structure - just a list of realistic goals
+    goals_list = goal_dict.get('goals', [])
+    if not goals_list:
+        print("No goals generated. Exiting session.")
+        return {}
+    
+    # Create a result dict to store conversations for each goal
     result_dict = {}
-    for (goal_type, goal) in goals.items():
-        seed_prompt = generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal)
+    for i, goal in enumerate(goals_list):
+        seed_prompt = generate_seed_prompt(
+            redteamer_config_dict, var_template, agent_config_dict, goal
+        )
         if seed_prompt is None:
-            print("Error generating seed prompt. Skipping.")
+            print(f"Error generating seed prompt for goal {i+1}. Skipping.")
             continue
 
-        sut_agent = create_agent(agent_config_dict, thread_id="3")
-        red_teamer_agent = create_red_teamer_agent(redteamer_config_dict, var_template, goal, thread_id="4")
+        sut_agent = create_agent(agent_config_dict, thread_id=f"sut_{i}")
+        red_teamer_agent = create_red_teamer_agent(
+            redteamer_config_dict, var_template, goal, thread_id=f"red_{i}"
+        )
 
         red_teaming_session = RedTeamingSession(
             sut_agent=sut_agent,
             redteamer_agent=red_teamer_agent,
         )
 
-        await red_teaming_session.run_conversation(goal, seed_prompt, max_turns=max_turns, verbose = verbose)
-        result_dict[goal_type] = red_teaming_session.conversation_history
+        conversation = await red_teaming_session.run_conversation(
+            goal, seed_prompt, max_turns=max_turns, verbose=verbose
+        )
+        result_dict[f"goal_{i+1}"] = conversation
     return result_dict
 
 
@@ -122,13 +132,13 @@ def generate_goal(goal_generator_dict, var_template, agent_config_dict, num_goal
 
     goal_list_text = goal_generator_agent.chat(user_prompt)
     try:
-        goals_dict = JsonOutputParser().parse(goal_list_text)['goals']
+        # The output is now expected to be a dict with a 'goals' key
+        goals_dict = JsonOutputParser().parse(goal_list_text)
     except Exception as e:
         print(f"Error parsing goal list: {e}")
         print(f"Goal list text: {goal_list_text}")
         return None
     return goals_dict
-    # return goals_dict['bad_faith'][1]
 
 
 def generate_seed_prompt(redteamer_config_dict, var_template, agent_config_dict, goal):

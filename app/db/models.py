@@ -84,12 +84,11 @@ class Session(Base):
     persona_id = Column(String(255), ForeignKey('personas.id'), nullable=False)
     
     # Session parameters
-    num_goals = Column(Integer, nullable=False)
-    max_turns = Column(Integer, nullable=False)
+    num_goals = Column(Integer, nullable=True)
+    max_turns = Column(Integer, nullable=True)
 
     # Session results
     session_data = Column(Text, nullable=False)  # JSON of the full output
-    good_faith = Column(Text, nullable=True)  # JSON of good_faith analysis
 
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -107,42 +106,28 @@ class Session(Base):
             'num_goals': self.num_goals,
             'max_turns': self.max_turns,
             'session_data': json.loads(self.session_data),
-            'good_faith': (
-                json.loads(self.good_faith) if self.good_faith else None
-            ),
             'created_at': self.created_at.isoformat()
         }
 
 
-# Database configuration
-def get_db_path():
-    """Get the absolute path for the database file"""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(current_dir, 'personas.db')
-
-
-DATABASE_URL = os.getenv('DATABASE_URL', f'sqlite:///{get_db_path()}')
-
-
-def get_engine():
-    """Create and return database engine"""
-    return create_engine(DATABASE_URL, echo=False)
+# Database setup
+# Use an absolute path for the database file
+db_dir = os.path.abspath(os.path.dirname(__file__))
+db_path = os.path.join(db_dir, 'personas.db')
+engine = create_engine(f'sqlite:///{db_path}')
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def get_session():
-    """Create and return database session"""
-    engine = get_engine()
-    SessionLocal = sessionmaker(bind=engine)
+    """Get a new database session."""
     return SessionLocal()
 
 
 def create_tables():
     """Create all database tables"""
-    engine = get_engine()
     Base.metadata.create_all(engine)
 
 
 def drop_tables():
     """Drop all database tables"""
-    engine = get_engine()
     Base.metadata.drop_all(engine)
