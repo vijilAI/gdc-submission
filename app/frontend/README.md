@@ -1,22 +1,40 @@
-# Frontend Documentation
+# Virtual User Testing Frontend
 
-📚 **Documentation has moved!**
+This directory contains the Streamlit-based frontend for the Virtual User Testing application.
 
-All frontend setup, usage instructions, and chatbot configuration guidelines have been moved to the main repository README.
+## Development
 
-👉 **Please see [/README.md](/README.md) for comprehensive documentation including:**
+### File Structure
 
-- Frontend setup and usage instructions
-- Detailed chatbot configuration guides
-- Troubleshooting for both API and frontend issues
-- Complete project overview and architecture
+```
+app/frontend/
+├── streamlit_app.py      # Main Streamlit application
+├── run_streamlit.py      # Script to start the app
+└── README.md            # This file
+```
 
-## Quick Links
+### Extending the Frontend
 
-- **Frontend Setup**: See "Frontend Interface" section in main README
-- **Chatbot Configuration**: See "Configuring Different Chatbots" section
-- **Troubleshooting**: See "Troubleshooting" section for frontend-specific issues
+To add new features:
+
+1. **New Pages**: Add new page options in the sidebar radio button
+2. **API Endpoints**: Add new functions to communicate with additional API endpoints
+3. **Visualizations**: Use Streamlit's built-in charting for data visualization
+4. **Styling**: Modify the CSS in the `st.markdown()` calls for custom styling
+
+## Dependencies
+
+- `streamlit`: Web application framework
+- `requests`: HTTP client for API communication
+- `pandas`: Data manipulation (if needed for future features)
+- `json`: JSON handling for API responses
+
+## Performance Notes
+
+- The app caches API responses where possible
+- Session state maintains user selections across page navigation
+- Progress bars provide user feedback during long-running operations
 
 ---
 
-For the most up-to-date and complete documentation, always refer to the main [README.md](/README.md) file.
+For issues or feature requests, please check the main project documentation.
