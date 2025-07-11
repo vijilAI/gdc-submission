@@ -25,14 +25,14 @@ async def run_session_from_config(persona_config, target_agent_config, goal_gene
     # Set default configs with absolute paths
     if goal_generator_config is None:
         goal_generator_config = os.path.join(
-            src_dir, 'configs', 'simulacra_goal_generator.yaml'
+            src_dir, 'configs', 'goal_generator.yaml'
         )
     elif not os.path.isabs(goal_generator_config):
         goal_generator_config = os.path.join(src_dir, goal_generator_config)
         
     if redteamer_config is None:
         redteamer_config = os.path.join(
-            src_dir, 'configs', 'simulacra_redteamer.yaml'
+            src_dir, 'configs', 'tester.yaml'
         )
     elif not os.path.isabs(redteamer_config):
         redteamer_config = os.path.join(src_dir, redteamer_config)

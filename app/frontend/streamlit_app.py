@@ -76,9 +76,9 @@ def check_api_health() -> bool:
         return False
 
 def load_personas() -> List[Dict[str, Any]]:
-    """Load personas from the API"""
+    """Load all personas with full details from the API"""
     try:
-        response = requests.get(f"{API_BASE}/personas")
+        response = requests.get(f"{API_BASE}/personas/full")
         if response.status_code == 200:
             return response.json()
         else:
@@ -87,23 +87,6 @@ def load_personas() -> List[Dict[str, Any]]:
     except requests.exceptions.RequestException as e:
         st.error(f"Error connecting to API: {e}")
         return []
-
-
-def get_persona_details(persona_id: str) -> Dict[str, Any]:
-    """Fetch full details for a single persona."""
-    try:
-        response = requests.get(f"{API_BASE}/personas/{persona_id}")
-        if response.status_code == 200:
-            return response.json()
-        else:
-            st.error(
-                f"Failed to get details for persona {persona_id}: "
-                f"HTTP {response.status_code}"
-            )
-            return {}
-    except requests.exceptions.RequestException as e:
-        st.error(f"API connection error: {e}")
-        return {}
 
 
 def run_red_teaming_session(
@@ -348,9 +331,7 @@ def main():
         with col2:
             if st.button("🔄 Refresh Personas", use_container_width=True):
                 st.session_state.personas = load_personas()
-                # Clear detailed cache on refresh
-                if 'personas_full' in st.session_state:
-                    del st.session_state['personas_full']
+                st.rerun()
         
         # Load personas on first visit
         if 'personas' not in st.session_state or not st.session_state.personas:
@@ -358,18 +339,8 @@ def main():
                 st.session_state.personas = load_personas()
         
         if st.session_state.personas:
-            # Fetch full details for filtering if not already cached
-            if 'personas_full' not in st.session_state:
-                with st.spinner("Fetching details for all personas..."):
-                    personas_full = [
-                        get_persona_details(p['id'])
-                        for p in st.session_state.personas if p
-                    ]
-                    st.session_state.personas_full = [
-                        p for p in personas_full if p
-                    ]
-
-            personas_full = st.session_state.get('personas_full', [])
+            # Use the personas directly since they now include full details
+            personas_full = st.session_state.personas
 
             # --- Filtering Logic ---
             if 'filters' not in st.session_state:
@@ -382,7 +353,7 @@ def main():
                 """Shows a dialog for filtering personas."""
                 st.subheader("Apply Demographic Filters")
 
-                all_personas = st.session_state.get('personas_full', [])
+                all_personas = personas_full
 
                 def get_unique_values(key, is_demographic=False):
                     values = set()
@@ -720,7 +691,9 @@ def main():
                 st.subheader(f"Details for Session: `{session_id}`")
             with col2:
                 # Export session button
-                session_json = json.dumps(st.session_state.viewed_session, indent=2)
+                session_json = json.dumps(
+                    st.session_state.viewed_session, indent=2
+                )
                 st.download_button(
                     label="📥 Export Session",
                     data=session_json,

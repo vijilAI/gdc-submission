@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import sys
 from functools import singledispatch
@@ -157,7 +158,7 @@ async def run_red_teaming_session(request: RedTeamingRequest):
         # Set default target agent config if not provided
         if request.target_agent_config is None:
             request.target_agent_config = os.path.join(
-                src_dir, 'configs', 'nora.yaml'
+                src_dir, 'configs', 'alex.yaml'
             )
         
         # Handle persona path
@@ -265,7 +266,8 @@ async def root():
                 "Run a red teaming session with a persona",
             "GET /health": "Health check",
             "GET /": "This endpoint",
-            "GET /personas": "List all personas",
+            "GET /personas": "List all personas (basic info)",
+            "GET /personas/full": "List all personas (full details)",
             "GET /personas/{persona_id}": "Get a specific persona",
             "GET /sessions": "List all completed sessions",
         }
@@ -288,6 +290,53 @@ async def list_personas():
             }
             for p in personas
         ]
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database error: {e}"
+        )
+
+
+@app.get("/personas/full", response_model=List[PersonaResponse])
+async def list_personas_full():
+    """Get all personas with full details in one call"""
+    if not DB_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        personas = persona_db.get_all_personas()
+        result = []
+        
+        for persona in personas:
+            try:
+                persona_dict = persona.to_dict()
+                
+                # Clean survey responses to handle NaN values
+                if 'survey_responses' in persona_dict:
+                    cleaned_responses = {}
+                    for key, value in persona_dict['survey_responses'].items():
+                        if (
+                            value is None or
+                            (isinstance(value, float) and math.isnan(value))
+                        ):
+                            cleaned_responses[key] = ""
+                        else:
+                            cleaned_responses[key] = str(value)
+                    persona_dict['survey_responses'] = cleaned_responses
+                
+                persona_response = PersonaResponse(
+                    **persona_dict,
+                    id=persona.id
+                )
+                result.append(persona_response)
+            except Exception as validation_error:
+                # Skip personas with validation issues but continue processing
+                print(
+                    f"Validation error for persona {persona.id}: "
+                    f"{validation_error}"
+                )
+                continue
+                
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Database error: {e}"
@@ -327,6 +376,7 @@ async def get_persona(persona_id: str):
         raise HTTPException(
             status_code=500, detail=f"Database error: {e}"
         )
+
 
 @app.get("/session/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str):

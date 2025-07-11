@@ -138,7 +138,7 @@ The `personas` table contains:
 # In run_session calls
 result = await run_session_from_config(
     persona_config="2d33bd32-ca14-4ab2-813e-8b1eb0fea04d_English",
-    target_agent_config="configs/nora.yaml",
+    target_agent_config="configs/alex.yaml",
     use_db=True  # Default
 )
 ```
@@ -147,7 +147,7 @@ result = await run_session_from_config(
 ```python
 result = await run_session_from_config(
     persona_config="path/to/persona.json",
-    target_agent_config="configs/nora.yaml", 
+    target_agent_config="configs/alex.yaml", 
     use_db=False
 )
 ```
