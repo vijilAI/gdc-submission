@@ -1,12 +1,12 @@
-# GDC Persona Red Teaming Frontend
+# Virtual User Testing Frontend
 
-This directory contains the Streamlit-based frontend for the GDC Persona Red Teaming application.
+This directory contains the Streamlit-based frontend for the Virtual User Testing application.
 
 ## Features
 
 - **📱 Interactive Web Interface**: Clean, modern Streamlit interface
-- **👥 Persona Browser**: Browse and select from available personas in the database
-- **🎯 Session Configuration**: Configure red teaming sessions with custom parameters
+- **👥 Virtual User Browser**: Browse and select from available virtual users in the database
+- **🎯 Session Configuration**: Configure testing sessions with custom parameters
 - **📊 Results Visualization**: View conversation results with formatted output
 - **💾 Export Functionality**: Download session results as JSON files
 
@@ -48,20 +48,20 @@ pip install streamlit requests pandas
 
 ### Pages
 
-1. **👥 Browse Personas**
-   - View all personas in the database
-   - Select a persona for red teaming sessions
-   - View detailed persona information
+1. **👥 Browse Virtual Users**
+   - View all virtual users in the database
+   - Select a virtual user for testing sessions
+   - View detailed virtual user information
 
 2. **🎯 Run Session**
    - Configure session parameters (goals, turns, verbosity)
-   - Run red teaming sessions with selected personas
+   - Run testing sessions with selected virtual users
    - Real-time progress tracking
 
 3. **📊 Session Results**
    - View conversation results organized by goal type
    - Download results in JSON format
-   - Formatted display of red teamer vs assistant conversations
+   - Formatted display of virtual user vs agent conversations
 
 ### Key Features
 

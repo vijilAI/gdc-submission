@@ -74,7 +74,7 @@ class Persona(Base):
 
 class Session(Base):
     """
-    SQLAlchemy model for storing red teaming session data.
+    SQLAlchemy model for storing virtual user testing session data.
     """
     __tablename__ = 'sessions'
 
@@ -86,6 +86,7 @@ class Session(Base):
     # Session parameters
     num_goals = Column(Integer, nullable=True)
     max_turns = Column(Integer, nullable=True)
+    conversations_per_goal = Column(Integer, nullable=True)
 
     # Session results
     session_data = Column(Text, nullable=False)  # JSON of the full output
@@ -105,6 +106,7 @@ class Session(Base):
             'persona_id': self.persona_id,
             'num_goals': self.num_goals,
             'max_turns': self.max_turns,
+            'conversations_per_goal': self.conversations_per_goal,
             'session_data': json.loads(self.session_data),
             'created_at': self.created_at.isoformat()
         }

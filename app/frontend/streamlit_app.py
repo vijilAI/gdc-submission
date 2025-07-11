@@ -10,7 +10,7 @@ API_BASE = "http://localhost:8000"
 
 # Set page config
 st.set_page_config(
-    page_title="GDC Persona Red Teaming",
+    page_title="GDC Conversational Agent Testing",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -89,19 +89,21 @@ def load_personas() -> List[Dict[str, Any]]:
         return []
 
 
-def run_red_teaming_session(
-    persona_id: str, num_goals: int, max_turns: int, verbose: bool
+def run_agent_testing_session(
+    persona_id: str, num_goals: int, max_turns: int,
+    conversations_per_goal: int, verbose: bool
 ) -> Dict[str, Any]:
-    """Run a red teaming session via the API."""
+    """Run an agent testing session via the API."""
     payload = {
         "persona_fname": persona_id,
         "num_goals": num_goals,
         "max_turns": max_turns,
+        "conversations_per_goal": conversations_per_goal,
         "verbose": verbose,
     }
     try:
         response = requests.post(
-            f"{API_BASE}/run-red-teaming-session", json=payload
+            f"{API_BASE}/run-virtual-user-testing", json=payload
         )
         if response.status_code == 200:
             return {"success": True, **response.json()}
@@ -211,12 +213,31 @@ def display_conversation_results(results: Dict[str, Any]):
                     conversations_to_display = [conversation_data]
 
                 if conversations_to_display:
+                    # Display the goal only once at the top of the tab
+                    first_conversation = conversations_to_display[0]
+                    
+                    # Parse the first conversation to get the goal
+                    if isinstance(first_conversation, str):
+                        try:
+                            parsed_conv = json.loads(first_conversation)
+                            goal = parsed_conv.get('goal', 'Unknown Goal')
+                        except json.JSONDecodeError:
+                            goal = 'Unknown Goal'
+                    elif isinstance(first_conversation, dict):
+                        goal = first_conversation.get('goal', 'Unknown Goal')
+                    elif hasattr(first_conversation, 'goal'):
+                        goal = getattr(first_conversation, 'goal', 'Unknown Goal')
+                    else:
+                        goal = 'Unknown Goal'
+                    
+                    # Display goal once at the top
+                    st.info(f"**Goal:** {goal}")
+                    st.markdown("---")
+
+                    # Display each conversation in a collapsible expander
                     for j, conversation_item in enumerate(
                         conversations_to_display
                     ):
-                        if len(conversations_to_display) > 1:
-                            st.subheader(f"Conversation {j + 1}")
-
                         # Handle different data formats
                         conversation = None
                         if isinstance(conversation_item, str):
@@ -248,56 +269,68 @@ def display_conversation_results(results: Dict[str, Any]):
                             st.error(f"Unknown format: {conv_type}")
                             continue
 
-                        # Display goal
-                        goal = conversation.get('goal')
-                        if goal:
-                            st.info(f"**Goal:** {goal}")
+                        # Create collapsible section for each conversation
+                        conv_title = f"Conversation {j + 1}"
+                        if len(conversations_to_display) == 1:
+                            # If only one conversation, expand by default
+                            with st.expander(conv_title, expanded=True):
+                                display_conversation_turns(conversation)
+                        else:
+                            # Multiple conversations, collapse by default
+                            with st.expander(conv_title, expanded=False):
+                                display_conversation_turns(conversation)
 
-                        # Display turns
-                        turns = conversation.get('turns', [])
-                        if turns:
-                            for turn_item in turns:
-                                # The turn might be a string in older data
-                                if isinstance(turn_item, str):
-                                    try:
-                                        turn = json.loads(turn_item)
-                                    except json.JSONDecodeError:
-                                        st.warning("Could not parse turn.")
-                                        continue
-                                else:
-                                    turn = turn_item
-
-                                role = turn.get('role', 'unknown')
-                                content = turn.get('content', '')
-                                turn_id = turn.get('id', '')
-
-                                # Style based on role
-                                if role.lower() == 'user':
-                                    st.markdown(
-                                        f"**🔴 Red Teamer ({turn_id}):**"
-                                    )
-                                    st.markdown(f"> {content}")
-                                else:
-                                    st.markdown(
-                                        f"**🤖 Assistant ({turn_id}):**"
-                                    )
-                                    st.markdown(f"> {content}")
-
-                                st.markdown("---")
-
-                        st.markdown("<br>", unsafe_allow_html=True)
                 else:
                     st.info(f"No conversations found for {goal_type}")
     else:
         st.info("No session data available to display.")
 
 
+def display_conversation_turns(conversation):
+    """Helper function to display conversation turns"""
+    # Display turns
+    turns = conversation.get('turns', [])
+    if turns:
+        for turn_item in turns:
+            # The turn might be a string in older data
+            if isinstance(turn_item, str):
+                try:
+                    turn = json.loads(turn_item)
+                except json.JSONDecodeError:
+                    st.warning("Could not parse turn.")
+                    continue
+            else:
+                turn = turn_item
+
+            role = turn.get('role', 'unknown')
+            content = turn.get('content', '')
+            turn_id = turn.get('id', '')
+
+            # Style based on role
+            if role.lower() == 'user':
+                st.markdown(
+                    f"**� Virtual User ({turn_id}):**"
+                )
+                st.markdown(f"> {content}")
+            else:
+                st.markdown(
+                    f"**🤖 Agent ({turn_id}):**"
+                )
+                st.markdown(f"> {content}")
+
+            st.markdown("---")
+    else:
+        st.info("No conversation turns found.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+
 def main():
     # Header
     st.markdown("""
     <div class="main-header">
-        <h1>🤖 GDC Persona Red Teaming Platform</h1>
-        <p>Interactive persona-based AI red teaming interface</p>
+        <h1>🤖 GDC Conversational Agent Testing Platform</h1>
+        <p>Interactive virtual user testing interface</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -315,7 +348,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Choose a page:",
-        ["👥 Browse Personas", "🎯 Run Session", "📊 Session Results"]
+        ["👥 Browse Personas", "🎯 Run Testing Session", "📊 Session Results"]
     )
     
     # Initialize session state
@@ -337,7 +370,7 @@ def main():
         col1, col2 = st.columns([3, 1])
         with col1:
             st.write(
-                "Browse, filter, and select personas for red teaming sessions."
+                "Browse, filter, and select virtual users for testing."
             )
         with col2:
             if st.button("🔄 Refresh Personas", use_container_width=True):
@@ -567,19 +600,21 @@ def main():
                 "No personas found. Make sure the database is populated."
             )
 
-    # Page 2: Run Session
-    elif page == "🎯 Run Session":
-        st.header("Configure Red Teaming Session")
+    # Page 2: Run Testing Session
+    elif page == "🎯 Run Testing Session":
+        st.header("Configure Agent Testing Session")
 
         # Check if persona is selected
         if not st.session_state.selected_persona:
             st.warning(
-                "Please select a persona from the "
+                "Please select a virtual user from the "
                 "'Browse Personas' page first."
             )
             st.stop()
 
-        st.info(f"Selected Persona: **{st.session_state.selected_persona}**")
+        st.info(
+            f"Selected Virtual User: **{st.session_state.selected_persona}**"
+        )
 
         # Session configuration
         col1, col2 = st.columns(2)
@@ -600,6 +635,14 @@ def main():
                 value=5,
                 help="Maximum number of conversation turns"
             )
+            
+            conversations_per_goal = st.slider(
+                "Conversations per Goal",
+                min_value=1,
+                max_value=5,
+                value=1,
+                help="Number of conversations to run for each goal"
+            )
         
         with col2:
             verbose = st.checkbox(
@@ -608,22 +651,23 @@ def main():
                 help="Enable detailed output during session"
             )
             
-            st.markdown("### Session Preview")
+            st.markdown("### Testing Session Preview")
             st.json({
-                "persona": st.session_state.selected_persona,
+                "virtual_user": st.session_state.selected_persona,
                 "num_goals": num_goals,
                 "max_turns": max_turns,
+                "conversations_per_goal": conversations_per_goal,
                 "verbose": verbose
             })
         
         # Run session button
         if st.button(
-            "🚀 Run Red Teaming Session",
+            "🚀 Run Agent Testing Session",
             type="primary",
             use_container_width=True
         ):
             with st.spinner(
-                "Running red teaming session... This may take a few minutes."
+                "Running agent testing session... This may take a few minutes."
             ):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -642,10 +686,11 @@ def main():
                     time.sleep(0.05)
 
                 # Actually run the session
-                results = run_red_teaming_session(
+                results = run_agent_testing_session(
                     st.session_state.selected_persona,
                     num_goals,
                     max_turns,
+                    conversations_per_goal,
                     verbose
                 )
 
@@ -732,7 +777,7 @@ def main():
     st.markdown("---")
     st.markdown(
         "<p style='text-align: center; color: #888;'>"
-        "GDC Persona Red Teaming Platform | Built with Streamlit"
+        "Virtual User Testing Platform | Built with Streamlit"
         "</p>",
         unsafe_allow_html=True
     )

@@ -15,8 +15,6 @@ src_dir = os.path.abspath(
 )
 sys.path.insert(0, app_dir)
 sys.path.insert(0, src_dir)
-from db.models import Session as SessionModel  # noqa: E402
-from db.operations import persona_db, session_db  # noqa: E402
 
 print(sys.path)
 # Local application imports
@@ -71,7 +69,7 @@ def ts_dict(val: dict):
     return {k: to_serializable(v) for k, v in val.items()}
 
 
-app = FastAPI(title="Persona Red Teaming API", version="1.0.0")
+app = FastAPI(title="Virtual User Conversation Testing API", version="1.0.0")
 
 
 # Initialize database and load personas on startup
@@ -109,16 +107,17 @@ async def startup_event():
         print("⚠️  Database not available")
 
 
-class RedTeamingRequest(BaseModel):
+class VirtualUserTestingRequest(BaseModel):
     persona_fname: str  # Can be file path or persona ID
     target_agent_config: Optional[str] = None
     num_goals: Optional[int] = None
     max_turns: Optional[int] = None
+    conversations_per_goal: Optional[int] = 1  # Conversations per goal
     verbose: Optional[bool] = True
     use_db: Optional[bool] = True  # Whether to use database lookup
 
 
-class RedTeamingResponse(BaseModel):
+class VirtualUserTestingResponse(BaseModel):
     success: bool
     error: Optional[str] = None
     session_data: Optional[Dict[str, Any]] = None
@@ -139,13 +138,17 @@ class SessionResponse(BaseModel):
     persona_id: str
     num_goals: Optional[int] = None
     max_turns: Optional[int] = None
+    conversations_per_goal: Optional[int] = None
     session_data: Dict[str, Any]
 
 
-@app.post("/run-red-teaming-session", response_model=RedTeamingResponse)
-async def run_red_teaming_session(request: RedTeamingRequest):
+@app.post(
+    "/run-virtual-user-testing",
+    response_model=VirtualUserTestingResponse
+)
+async def run_virtual_user_testing(request: VirtualUserTestingRequest):
     """
-    Run a red teaming session with a specified persona.
+    Run a virtual user testing session with a specified persona.
     """
     try:
         # Get absolute paths relative to the API directory
@@ -176,7 +179,7 @@ async def run_red_teaming_session(request: RedTeamingRequest):
                     raise HTTPException(
                         status_code=404,
                         detail=(
-                            f"Persona '{persona_id_or_fname}' not found "
+                            f"Virtual user '{persona_id_or_fname}' not found "
                             "in DB or filesystem."
                         )
                     )
@@ -188,7 +191,9 @@ async def run_red_teaming_session(request: RedTeamingRequest):
             else:
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Persona file '{persona_id_or_fname}' not found."
+                    detail=(
+                        f"Virtual user file '{persona_id_or_fname}' not found."
+                    )
                 )
 
         # Validate target agent config exists
@@ -211,6 +216,11 @@ async def run_red_teaming_session(request: RedTeamingRequest):
         
         if request.max_turns is not None:
             session_kwargs['max_turns'] = request.max_turns
+            
+        if request.conversations_per_goal is not None:
+            session_kwargs['conversations_per_goal'] = (
+                request.conversations_per_goal
+            )
         
         # Run the session
         output = await run_session_from_config(**session_kwargs)
@@ -225,19 +235,20 @@ async def run_red_teaming_session(request: RedTeamingRequest):
                 persona_id=persona_id_or_fname,
                 num_goals=request.num_goals,
                 max_turns=request.max_turns,
+                conversations_per_goal=request.conversations_per_goal,
                 session_data=json.dumps(serializable_output)
             )
             created_session = session_db.create_session(new_session)
             session_id = created_session.id
 
-        return RedTeamingResponse(
+        return VirtualUserTestingResponse(
             success=True,
             session_data=serializable_output,
             session_id=session_id
         )
         
     except Exception as e:
-        return RedTeamingResponse(
+        return VirtualUserTestingResponse(
             success=False,
             error=str(e)
         )
@@ -253,24 +264,27 @@ async def health_check():
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Persona Red Teaming API",
+        "message": "Virtual User Conversation Testing API",
         "version": "1.0.0",
+        "description": (
+            "Platform for testing conversational agents with virtual users"
+        ),
         "endpoints": {
-            "POST /run-red-teaming-session":
-                "Run a red teaming session with a persona",
+            "POST /run-virtual-user-testing":
+                "Run a virtual user testing session with a persona",
             "GET /health": "Health check",
             "GET /": "This endpoint",
-            "GET /personas": "List all personas (basic info)",
-            "GET /personas/full": "List all personas (full details)",
-            "GET /personas/{persona_id}": "Get a specific persona",
-            "GET /sessions": "List all completed sessions",
+            "GET /personas": "List all virtual users (basic info)",
+            "GET /personas/full": "List all virtual users (full details)",
+            "GET /personas/{persona_id}": "Get a specific virtual user",
+            "GET /sessions": "List all completed testing sessions",
         }
     }
 
 
 @app.get("/personas", response_model=List[Dict[str, str]])
 async def list_personas():
-    """Get a list of all personas in the database"""
+    """Get a list of all virtual users in the database"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -292,7 +306,7 @@ async def list_personas():
 
 @app.get("/personas/full", response_model=List[PersonaResponse])
 async def list_personas_full():
-    """Get all personas with full details in one call"""
+    """Get all virtual users with full details in one call"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -339,7 +353,7 @@ async def list_personas_full():
 
 @app.get("/sessions")
 async def list_sessions():
-    """Get a list of all completed sessions"""
+    """Get a list of all completed testing sessions"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -354,7 +368,7 @@ async def list_sessions():
 
 @app.get("/personas/{persona_id}", response_model=PersonaResponse)
 async def get_persona(persona_id: str):
-    """Get a specific persona by ID"""
+    """Get a specific virtual user by ID"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -362,7 +376,7 @@ async def get_persona(persona_id: str):
         persona = persona_db.get_persona_by_id(persona_id)
         if not persona:
             raise HTTPException(
-                status_code=404, detail=f"Persona {persona_id} not found"
+                status_code=404, detail=f"Virtual user {persona_id} not found"
             )
         
         return PersonaResponse(**persona.to_dict(), id=persona.id)
@@ -374,7 +388,7 @@ async def get_persona(persona_id: str):
 
 @app.get("/session/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str):
-    """Get a specific session by ID"""
+    """Get a specific testing session by ID"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -382,7 +396,7 @@ async def get_session(session_id: str):
         session = session_db.get_session_by_id(session_id)
         if not session:
             raise HTTPException(
-                status_code=404, detail=f"Persona {session_id} not found"
+                status_code=404, detail=f"Session {session_id} not found"
             )
         
         return SessionResponse(**session.to_dict())
@@ -394,7 +408,7 @@ async def get_session(session_id: str):
 
 @app.post("/load-personas")
 async def load_personas_from_files():
-    """Load personas from JSON files into the database"""
+    """Load virtual users from JSON files into the database"""
     if not DB_AVAILABLE:
         raise HTTPException(status_code=503, detail="Database not available")
     
@@ -405,18 +419,18 @@ async def load_personas_from_files():
         
         if not os.path.exists(personas_dir):
             raise HTTPException(
-                status_code=404, detail="Personas directory not found"
+                status_code=404, detail="Virtual users directory not found"
             )
         
         count = persona_db.load_personas_from_json_files(personas_dir)
         return {
-            "message": f"Successfully loaded {count} personas",
+            "message": f"Successfully loaded {count} virtual users",
             "count": count
         }
         
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Error loading personas: {e}"
+            status_code=500, detail=f"Error loading virtual users: {e}"
         )
 
 

@@ -136,19 +136,25 @@ class Persona:
 
 
 @dataclass
-class RedTeamingSession:
+class VirtualUserTestingSession:
+    """
+    A class to manage a conversation session between a system under test (SUT)
+    agent and a virtual user agent.
+    """
+
     def __init__(
-        self, sut_agent: CustomReactAgent, redteamer_agent: CustomReactAgent
+        self, sut_agent: CustomReactAgent, virtual_user_agent: CustomReactAgent
     ):
         """
-        Initialize a red teaming session between a system under test (SUT) 
-        agent and a red teamer agent.
+        Initialize a virtual user testing session between a system under
+        test (SUT) agent and a virtual user agent.
         
         :param sut_agent: The agent being tested.
-        :param redteamer_agent: The agent performing the red teaming.
+        :param virtual_user_agent: The virtual user agent performing the
+            testing.
         """
         self.sut_agent = sut_agent
-        self.redteamer_agent = redteamer_agent
+        self.virtual_user_agent = virtual_user_agent
         self.conversation_history = None
 
     async def run_conversation(
@@ -156,7 +162,7 @@ class RedTeamingSession:
         verbose: bool = False
     ) -> Conversation:
         """
-        Run a conversation between the SUT and red teamer agents.
+        Run a conversation between the SUT and virtual user agents.
         
         :param goal: The goal of the conversation.
         :param starting_prompt: The initial prompt to start the conversation.
@@ -171,21 +177,21 @@ class RedTeamingSession:
         )
         
         # Add the seed prompt as the first turn
-        redteamer_thread_id = (
-            self.redteamer_agent.thread_config["configurable"]["thread_id"]
+        virtual_user_thread_id = (
+            self.virtual_user_agent.thread_config["configurable"]["thread_id"]
         )
         conversation.add_turn(
             role='user',
-            id=redteamer_thread_id,
+            id=virtual_user_thread_id,
             content=starting_prompt
         )
         
         current_prompt = starting_prompt
         
         for i in range(max_turns):
-            # Red teamer's turn
+            # Virtual user's turn
             if verbose:
-                print(f"Turn {i+1} - Red Teamer's turn")
+                print(f"Turn {i+1} - Virtual User's turn")
                 print(f"  Prompt: {current_prompt}")
             
             sut_response = self.sut_agent.chat(current_prompt)
@@ -204,21 +210,22 @@ class RedTeamingSession:
                 print(f"Turn {i+1} - SUT's turn")
                 print(f"  Prompt: {sut_response}")
             
-            redteamer_response = self.redteamer_agent.chat(sut_response)
+            virtual_user_response = self.virtual_user_agent.chat(sut_response)
             
             if verbose:
-                print(f"  Red Teamer Response: {redteamer_response}")
+                print(f"  Virtual User Response: {virtual_user_response}")
             
-            redteamer_thread_id = (
-                self.redteamer_agent.thread_config["configurable"]["thread_id"]
+            virtual_user_thread_id = (
+                self.virtual_user_agent
+                .thread_config["configurable"]["thread_id"]
             )
             conversation.add_turn(
                 role='user',
-                id=redteamer_thread_id,
-                content=redteamer_response
+                id=virtual_user_thread_id,
+                content=virtual_user_response
             )
             
-            current_prompt = redteamer_response
+            current_prompt = virtual_user_response
             
         self.conversation_history = conversation
         return self.conversation_history

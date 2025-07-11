@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to run the Streamlit frontend for the GDC Persona Red Teaming application.
+Script to run the Streamlit frontend for the Virtual User Testing application.
 """
 import subprocess
 import sys
