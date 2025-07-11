@@ -2,6 +2,9 @@ import json
 import math
 import os
 import sys
+import asyncio
+import uuid
+from datetime import datetime
 from functools import singledispatch
 from typing import Any, Dict, List, Optional
 
@@ -17,6 +20,10 @@ sys.path.insert(0, app_dir)
 sys.path.insert(0, src_dir)
 
 print(sys.path)
+
+# Global state for tracking multi-persona sessions
+multi_session_status = {}
+
 # Local application imports
 from agents.run_session import run_session_from_config  # noqa: E402
 
@@ -115,6 +122,46 @@ class VirtualUserTestingRequest(BaseModel):
     conversations_per_goal: Optional[int] = 1  # Conversations per goal
     verbose: Optional[bool] = True
     use_db: Optional[bool] = True  # Whether to use database lookup
+
+
+class MultiPersonaTestingRequest(BaseModel):
+    persona_ids: List[str]  # List of persona IDs
+    target_agent_config: Optional[str] = None
+    num_goals: Optional[int] = None
+    max_turns: Optional[int] = None
+    conversations_per_goal: Optional[int] = 1
+    verbose: Optional[bool] = True
+    use_db: Optional[bool] = True
+
+
+class PersonaSessionStatus(BaseModel):
+    persona_id: str
+    status: str  # "pending", "running", "completed", "failed"
+    progress: int  # 0-100
+    message: str
+    session_id: Optional[str] = None
+    error: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+
+
+class MultiPersonaTestingResponse(BaseModel):
+    success: bool
+    batch_id: str
+    message: str
+    total_personas: int
+    error: Optional[str] = None
+
+
+class BatchStatusResponse(BaseModel):
+    batch_id: str
+    total_personas: int
+    completed: int
+    failed: int
+    running: int
+    pending: int
+    overall_status: str  # "pending", "running", "completed", "failed"
+    persona_statuses: List[PersonaSessionStatus]
 
 
 class VirtualUserTestingResponse(BaseModel):
@@ -254,6 +301,229 @@ async def run_virtual_user_testing(request: VirtualUserTestingRequest):
         )
 
 
+async def run_single_persona_session(
+    batch_id: str, persona_id: str, session_kwargs: dict
+):
+    """Run a session for a single persona and update status"""
+    try:
+        # Update status to running
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "running",
+            "progress": 10,
+            "message": "Starting session...",
+            "started_at": datetime.now().isoformat()
+        })
+        
+        # Prepare persona config
+        if DB_AVAILABLE and session_kwargs.get('use_db', True):
+            persona_obj = persona_db.get_persona_by_id(persona_id)
+            if persona_obj:
+                persona_config = persona_obj.to_dict()
+            else:
+                raise Exception(f"Persona {persona_id} not found in database")
+        else:
+            raise Exception("Database not available for persona lookup")
+        
+        session_kwargs['persona_config'] = persona_config
+        
+        # Update progress
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "progress": 30,
+            "message": "Generating goals..."
+        })
+        
+        # Run the session
+        output = await run_session_from_config(**session_kwargs)
+        
+        # Update progress
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "progress": 80,
+            "message": "Saving session data..."
+        })
+        
+        # Convert output to be JSON serializable
+        serializable_output = to_serializable(output)
+        
+        # Save session to database
+        session_id = None
+        if session_kwargs.get('use_db', True) and DB_AVAILABLE:
+            new_session = SessionModel(
+                persona_id=persona_id,
+                num_goals=session_kwargs.get('num_goals'),
+                max_turns=session_kwargs.get('max_turns'),
+                conversations_per_goal=session_kwargs.get('conversations_per_goal'),
+                session_data=json.dumps(serializable_output)
+            )
+            created_session = session_db.create_session(new_session)
+            session_id = created_session.id
+        
+        # Update status to completed
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Session completed successfully",
+            "session_id": session_id,
+            "completed_at": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        # Update status to failed
+        multi_session_status[batch_id]["persona_statuses"][persona_id].update({
+            "status": "failed",
+            "progress": 0,
+            "message": f"Session failed: {str(e)}",
+            "error": str(e),
+            "completed_at": datetime.now().isoformat()
+        })
+
+
+async def run_multi_persona_sessions_background(batch_id: str, request: MultiPersonaTestingRequest):
+    """Run sessions for multiple personas in background"""
+    try:
+        # Get absolute paths relative to the API directory
+        api_dir = os.path.dirname(__file__)
+        repo_root = os.path.abspath(os.path.join(api_dir, '..', '..'))
+        src_dir = os.path.join(repo_root, 'src')
+        
+        # Set default target agent config if not provided
+        target_agent_config = request.target_agent_config
+        if target_agent_config is None:
+            target_agent_config = os.path.join(src_dir, 'configs', 'alex.yaml')
+        
+        # Validate target agent config exists
+        if not os.path.exists(target_agent_config):
+            raise Exception(f"Target agent config not found: {target_agent_config}")
+        
+        # Prepare kwargs for run_session_from_config (without persona_config)
+        session_kwargs = {
+            'target_agent_config': target_agent_config,
+            'verbose': request.verbose,
+            'use_db': request.use_db,
+        }
+        
+        if request.num_goals is not None:
+            session_kwargs['num_goals'] = request.num_goals
+        
+        if request.max_turns is not None:
+            session_kwargs['max_turns'] = request.max_turns
+            
+        if request.conversations_per_goal is not None:
+            session_kwargs['conversations_per_goal'] = request.conversations_per_goal
+        
+        # Run sessions for each persona concurrently
+        tasks = []
+        for persona_id in request.persona_ids:
+            task = run_single_persona_session(batch_id, persona_id, session_kwargs.copy())
+            tasks.append(task)
+        
+        # Wait for all sessions to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Update overall batch status
+        persona_statuses = multi_session_status[batch_id]["persona_statuses"]
+        completed_count = sum(1 for status in persona_statuses.values() if status["status"] == "completed")
+        failed_count = sum(1 for status in persona_statuses.values() if status["status"] == "failed")
+        
+        if failed_count == 0:
+            overall_status = "completed"
+        elif completed_count == 0:
+            overall_status = "failed"
+        else:
+            overall_status = "partially_completed"
+        
+        multi_session_status[batch_id]["overall_status"] = overall_status
+        multi_session_status[batch_id]["completed_at"] = datetime.now().isoformat()
+        
+    except Exception as e:
+        multi_session_status[batch_id]["overall_status"] = "failed"
+        multi_session_status[batch_id]["error"] = str(e)
+        multi_session_status[batch_id]["completed_at"] = datetime.now().isoformat()
+
+
+@app.post("/run-multi-persona-testing", response_model=MultiPersonaTestingResponse)
+async def run_multi_persona_testing(request: MultiPersonaTestingRequest):
+    """
+    Run virtual user testing sessions for multiple personas concurrently.
+    """
+    try:
+        if not request.persona_ids:
+            raise HTTPException(status_code=400, detail="No persona IDs provided")
+        
+        # Generate unique batch ID
+        batch_id = str(uuid.uuid4())
+        
+        # Initialize status tracking
+        multi_session_status[batch_id] = {
+            "batch_id": batch_id,
+            "total_personas": len(request.persona_ids),
+            "overall_status": "pending",
+            "created_at": datetime.now().isoformat(),
+            "persona_statuses": {}
+        }
+        
+        # Initialize status for each persona
+        for persona_id in request.persona_ids:
+            multi_session_status[batch_id]["persona_statuses"][persona_id] = {
+                "persona_id": persona_id,
+                "status": "pending",
+                "progress": 0,
+                "message": "Waiting to start...",
+                "session_id": None,
+                "error": None,
+                "started_at": None,
+                "completed_at": None
+            }
+        
+        # Start background task
+        asyncio.create_task(run_multi_persona_sessions_background(batch_id, request))
+        
+        return MultiPersonaTestingResponse(
+            success=True,
+            batch_id=batch_id,
+            message=f"Started sessions for {len(request.persona_ids)} personas",
+            total_personas=len(request.persona_ids)
+        )
+        
+    except Exception as e:
+        return MultiPersonaTestingResponse(
+            success=False,
+            batch_id="",
+            message="Failed to start multi-persona sessions",
+            total_personas=0,
+            error=str(e)
+        )
+
+
+@app.get("/batch-status/{batch_id}", response_model=BatchStatusResponse)
+async def get_batch_status(batch_id: str):
+    """Get the status of a multi-persona testing batch"""
+    if batch_id not in multi_session_status:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    batch_data = multi_session_status[batch_id]
+    persona_statuses = [
+        PersonaSessionStatus(**status) 
+        for status in batch_data["persona_statuses"].values()
+    ]
+    
+    # Count statuses
+    completed = sum(1 for s in persona_statuses if s.status == "completed")
+    failed = sum(1 for s in persona_statuses if s.status == "failed")
+    running = sum(1 for s in persona_statuses if s.status == "running")
+    pending = sum(1 for s in persona_statuses if s.status == "pending")
+    
+    return BatchStatusResponse(
+        batch_id=batch_id,
+        total_personas=batch_data["total_personas"],
+        completed=completed,
+        failed=failed,
+        running=running,
+        pending=pending,
+        overall_status=batch_data.get("overall_status", "pending"),
+        persona_statuses=persona_statuses
+    )
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
@@ -272,6 +542,10 @@ async def root():
         "endpoints": {
             "POST /run-virtual-user-testing":
                 "Run a virtual user testing session with a persona",
+            "POST /run-multi-persona-testing":
+                "Run virtual user testing sessions for multiple personas",
+            "GET /batch-status/{batch_id}":
+                "Get status of a multi-persona testing batch",
             "GET /health": "Health check",
             "GET /": "This endpoint",
             "GET /personas": "List all virtual users (basic info)",
