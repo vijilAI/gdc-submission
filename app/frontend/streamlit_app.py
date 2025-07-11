@@ -4,6 +4,9 @@ import json
 import pandas as pd
 from typing import Dict, List, Any
 import time
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 # Configuration
 API_BASE = "http://localhost:8000"
@@ -348,7 +351,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
         "Choose a page:",
-        ["👥 Browse Personas", "🎯 Run Testing Session", "📊 Session Results"]
+        ["👥 Browse Personas", "🎯 Run Testing Session", "📊 Session Results", "🔬 Session Analysis"]
     )
     
     # Initialize session state
@@ -773,6 +776,131 @@ def main():
                 )
             
             display_conversation_results(st.session_state.viewed_session)
+    elif page == "🔬 Session Analysis":
+        st.header("Session Analysis")
+        st.info(
+            "Examine how different demographic factors influence the types of conversations!. "
+        )
+        st.subheader("Session History")
+        if st.button("🔄 Refresh History"):
+            st.session_state.sessions_history = load_sessions()
+            st.session_state.viewed_session = None
+            st.rerun()
+
+        if st.session_state.sessions_history is None:
+            with st.spinner("Loading session history..."):
+                st.session_state.sessions_history = load_sessions()
+
+        sessions = st.session_state.sessions_history
+        if sessions:
+            # Now need to load personas to display demographic info
+            df = pd.DataFrame(sessions)
+            if 'personas' not in st.session_state or not st.session_state.personas:
+                with st.spinner("Loading personas..."):
+                    st.session_state.personas = load_personas()
+            
+            if st.session_state.personas:
+                # Use the personas directly since they now include full details
+                personas_full = st.session_state.personas
+
+            else:
+                personas_full = st.session_state.get('personas_full', [])
+            personas_df = pd.DataFrame(personas_full)
+            if 'demographic_info' in personas_df.columns:
+                # Flatten the 'demographic_info' column into separate columns
+                demographic_df = pd.json_normalize(personas_df['demographic_info'])
+
+                # Merge the normalized demographic data back into the personas DataFrame
+                personas_df = pd.concat([personas_df, demographic_df], axis=1)
+
+                # Display the updated DataFrame
+                # st.write(personas_df)
+
+            merged_df = pd.merge(df, personas_df, left_on='persona_id', right_on='id', how='left')
+
+            # Step 2: Allow user to select demographic attributes for pivoting
+            st.subheader("Demographic Analysis")
+            demographic_key_map2 = {
+                                'Age Range': 'age bracket',
+                                'Gender': 'gender',
+                                'Religion': 'religion',
+                                'Country of Residence':'self identified country',
+                                'Community Type': 'community type', 
+                                'Langauge' : 'response_language',
+                                'View of AI' : 'high_level_AI_view',
+                                }
+            options = [None] + list(demographic_key_map2.keys())
+            attribute_selected = st.selectbox("Select Demographic Attribute", options=options)
+
+            text_to_analysze = st.selectbox("Select Type of Text", options = [None, 'goals', 'conversations'])
+            
+            if attribute_selected and text_to_analysze:
+                # Map the selected attribute to the actual column name
+                attribute = demographic_key_map2.get(attribute_selected, attribute_selected)
+                unique_values = merged_df[attribute].dropna().unique()
+                unique_values = sorted(unique_values)
+
+
+                output_goals = {}
+                output_all_text = {}
+                output_all = {}
+
+                # Generate and display a word cloud for each unique value
+                for value in unique_values:
+                    
+                    # Filter data for the current value
+                    filtered_data = merged_df[merged_df[attribute] == value]
+                    
+                    # Combine text data for the word cloud
+                    # text_data = " ".join(filtered_data['persona_id'].dropna().astype(str))  # Replace 'persona_id' with relevant text column
+                    
+                    text_data = ""
+                    goal_text = ""
+                    for session_filtered in filtered_data['session_data'].dropna():
+                        for goal_name, goal_info in session_filtered.items():
+                            for conversations in goal_info:
+                                goal = conversations.get('goal', '')
+                                all_turns = conversations.get('turns', [])
+                                my_str = "\n".join([f"{x['role']} : {x['content']}" for x in all_turns])
+                                text_data += f"Goal: {goal}\n{my_str}\n\n"
+                            goal_text += f"{goal} \n\n"
+                    output_all_text[value] = text_data
+                    output_goals[value] = goal_text
+
+                document_list = []
+
+                if text_to_analysze == 'goals':
+                    document_list = list(output_goals.values())
+                elif text_to_analysze == 'conversations':
+                    document_list = list(output_all_text.values())
+
+                vectorizer = TfidfVectorizer(stop_words='english')
+                tfidf_matrix = vectorizer.fit_transform(document_list)
+                feature_names = vectorizer.get_feature_names_out()
+
+
+                def generate_wordcloud_for_document(doc_index):
+                    # Get the TF-IDF vector for this document
+                    tfidf_vector = tfidf_matrix[doc_index]
+                    word_scores = {
+                        feature_names[i]: tfidf_vector[0, i]
+                        for i in tfidf_vector.nonzero()[1]
+                    }
+                        
+                        # Generate word cloud from TF-IDF scores
+                    wordcloud = WordCloud(width=800, height=400, background_color='white')
+                    wordcloud.generate_from_frequencies(word_scores)
+                    return(wordcloud)
+
+                fig, ax = plt.subplots(figsize=(10, 5))
+                for i, value in enumerate(unique_values):
+                    st.markdown(f"### {attribute_selected}: {value}")
+                    wordcloud = generate_wordcloud_for_document(i)
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')  # Remove axes for better visualization
+                    # ax.set_title(f"{attribute_selected.capitalize()}: {value}", fontsize=16)
+                    st.pyplot(fig)
+
 
     # Footer
     st.markdown("---")
