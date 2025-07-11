@@ -39,11 +39,18 @@ st.markdown("""
         margin: 0.5rem 0;
     }
     
-    .selected-persona {
-        background: #e3f2fd !important;
-        border-color: #2196f3 !important;
+    .stButton>button[kind="primary"] {
+        background-color: #4CAF50;
+        color: white;
+        border-color: #4CAF50;
     }
-    
+
+    .stButton>button[kind="primary"]:hover {
+        background-color: #45a049;
+        color: white;
+        border-color: #45a049;
+    }
+
     .status-success {
         background: #d4edda;
         color: #155724;
@@ -567,11 +574,8 @@ def main():
             for i, persona in enumerate(filtered_personas):
                 col = cols[i % 3]
                 with col:
-                    card_class = (
-                        "selected-persona"
-                        if st.session_state.selected_persona == persona['id']
-                        else "persona-card"
-                    )
+                    is_selected = st.session_state.selected_persona == persona['id']
+                    card_class = "persona-card"
                     st.markdown(f"""
                     <div class="{card_class}">
                         <strong>{persona['id']}</strong><br>
@@ -585,13 +589,17 @@ def main():
                     """, unsafe_allow_html=True)
 
                     b_cols = st.columns(2)
+                    
+                    button_type = "primary" if is_selected else "secondary"
+
                     if b_cols[0].button(
                         "Select",
                         key=f"select_{persona['id']}",
-                        use_container_width=True
+                        use_container_width=True,
+                        type=button_type
                     ):
                         st.session_state.selected_persona = persona['id']
-                        st.success(f"Selected: {persona['id']}")
+                        st.rerun()
 
                     if b_cols[1].button(
                         "Details",
@@ -649,19 +657,13 @@ def main():
             )
         
         with col2:
-            verbose = st.checkbox(
-                "Verbose Output",
-                value=True,
-                help="Enable detailed output during session"
-            )
-            
             st.markdown("### Testing Session Preview")
             st.json({
                 "virtual_user": st.session_state.selected_persona,
                 "num_goals": num_goals,
                 "max_turns": max_turns,
                 "conversations_per_goal": conversations_per_goal,
-                "verbose": verbose
+                "verbose": True
             })
         
         # Run session button
