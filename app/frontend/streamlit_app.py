@@ -473,10 +473,17 @@ def main():
                                 'response_language', 'high_level_ai_view'
                             ]
                             if key in direct_fields:
-                                temp_filtered_personas = [
-                                    p for p in temp_filtered_personas
-                                    if p.get(key) in values
-                                ]
+                                # Map the filter key to the actual data key
+                                if key == 'high_level_ai_view':
+                                    temp_filtered_personas = [
+                                        p for p in temp_filtered_personas
+                                        if p.get('high_level_AI_view') in values
+                                    ]
+                                else:
+                                    temp_filtered_personas = [
+                                        p for p in temp_filtered_personas
+                                        if p.get(key) in values
+                                    ]
                             else:
                                 demographic_key_map = {
                                     'age_bracket': 'age bracket',
@@ -538,7 +545,11 @@ def main():
                             'self identified country'
                         )
                     elif key in ['response_language', 'high_level_ai_view']:
-                        value = p.get(key)
+                        # Map the filter key to the actual data key
+                        if key == 'high_level_ai_view':
+                            value = p.get('high_level_AI_view')
+                        else:
+                            value = p.get(key)
                     else:
                         value = p.get(key)
 
