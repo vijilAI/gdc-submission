@@ -72,25 +72,24 @@ def validate_and_sanitize_path(
     Raises:
         HTTPException: If path is invalid or outside allowed directories
     """
-    # Remove any potential path traversal sequences
-    sanitized_input = os.path.normpath(user_input).replace('..', '')
+    # Normalize the user input to prevent path traversal sequences
+    sanitized_input = os.path.normpath(user_input)
     
-    # If it's just a filename, try to find it in allowed directories
-    if not os.path.isabs(sanitized_input):
-        for allowed_dir in allowed_dirs:
-            potential_path = os.path.join(allowed_dir, sanitized_input)
-            if file_extension and not potential_path.endswith(file_extension):
-                potential_path += file_extension
-            if os.path.exists(potential_path):
-                candidate_path = os.path.abspath(potential_path)
-                break
-        else:
-            # If not found, construct path relative to first allowed dir
-            candidate_path = os.path.abspath(
-                os.path.join(allowed_dirs[0], sanitized_input)
-            )
-            if file_extension and not candidate_path.endswith(file_extension):
-                candidate_path += file_extension
+    # Check that the normalized path is within one of the allowed directories
+    for allowed_dir in allowed_dirs:
+        allowed_dir = os.path.abspath(allowed_dir)
+        potential_path = os.path.abspath(os.path.join(allowed_dir, sanitized_input))
+        if file_extension and not potential_path.endswith(file_extension):
+            potential_path += file_extension
+        if potential_path.startswith(allowed_dir) and os.path.exists(potential_path):
+            candidate_path = potential_path
+            break
+    else:
+        # If no valid path is found, raise an exception
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid path: {user_input}"
+        )
     else:
         candidate_path = os.path.abspath(sanitized_input)
     
