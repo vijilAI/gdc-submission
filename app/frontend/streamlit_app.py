@@ -642,14 +642,14 @@ def display_header():
             text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
         ">
             <h1>🤖 Global Dialogues with AI</h1>
-            <h6>Simulating Global User Preferences on AI Interactions</h6>
+            <h6>Simulating Diverse User Preferences on AI Interactions</h6>
         </div>
         """.format(logo_base64), unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="main-header">
             <h1>🤖 Global Dialogues with AI</h1>
-            <h6>Simulating Global User Preferences on AI Interactions</h6>
+            <h6>Simulating Diverse User Preferences on AI Interactions</h6>
         </div>
         """, unsafe_allow_html=True)
 
@@ -677,14 +677,14 @@ def main():
             text-shadow: 2px 2px 4px rgba(0,0,0,0.7);
         ">
             <h1>🤖 Global Dialogues with AI</h1>
-            <h6>Simulating Global User Preferences on AI Interactions</h6>
+            <h6>Simulating Diverse User Preferences on AI Interactions</h6>
         </div>
         """.format(logo_base64), unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="main-header">
             <h1>🤖 Global Dialogues with AI</h1>
-            <h6>Simulating Global User Preferences on AI Interactions</h6>
+            <h6>Simulating Diverse User Preferences on AI Interactions</h6>
         </div>
         """, unsafe_allow_html=True)
 
