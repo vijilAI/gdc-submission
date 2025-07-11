@@ -3,7 +3,6 @@ import requests
 import json
 import pandas as pd
 from typing import Dict, List, Any
-import time
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -99,13 +98,13 @@ def load_personas() -> List[Dict[str, Any]]:
         return []
 
 
-def run_agent_testing_session(
-    persona_id: str, num_goals: int, max_turns: int,
+def run_multi_persona_testing_session(
+    persona_ids: List[str], num_goals: int, max_turns: int,
     conversations_per_goal: int, verbose: bool
 ) -> Dict[str, Any]:
-    """Run an agent testing session via the API."""
+    """Run testing sessions for multiple personas via the API."""
     payload = {
-        "persona_fname": persona_id,
+        "persona_ids": persona_ids,
         "num_goals": num_goals,
         "max_turns": max_turns,
         "conversations_per_goal": conversations_per_goal,
@@ -113,7 +112,7 @@ def run_agent_testing_session(
     }
     try:
         response = requests.post(
-            f"{API_BASE}/run-virtual-user-testing", json=payload
+            f"{API_BASE}/run-multi-persona-testing", json=payload
         )
         if response.status_code == 200:
             return {"success": True, **response.json()}
@@ -123,6 +122,56 @@ def run_agent_testing_session(
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": str(e)}
 
+
+def get_batch_status(batch_id: str) -> Dict[str, Any]:
+    """Get the status of a multi-persona testing batch."""
+    try:
+        response = requests.get(f"{API_BASE}/batch-status/{batch_id}")
+        if response.status_code == 200:
+            return {"success": True, **response.json()}
+        else:
+            error_detail = response.json().get('detail', 'Unknown error')
+            return {"success": False, "error": error_detail}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": str(e)}
+
+
+def display_batch_status(batch_status: Dict[str, Any]):
+    """Display the status of a multi-persona testing batch."""
+    if not batch_status.get("success", False):
+        st.error(f"Error getting batch status: {batch_status.get('error', 'Unknown error')}")
+        return
+    
+    batch_data = batch_status
+    
+    # Overall progress
+    total = batch_data['total_personas']
+    completed = batch_data['completed']
+    
+    # Progress bar (without text)
+    progress = completed / total if total > 0 else 0
+    st.progress(progress)
+    
+    # Individual persona status
+    for persona_status in batch_data['persona_statuses']:
+        with st.expander(f"Persona: {persona_status['persona_id']} - {persona_status['status'].title()}"):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.write(f"**Status:** {persona_status['status']}")
+                st.write(f"**Message:** {persona_status['message']}")
+                if persona_status.get('error'):
+                    st.error(f"Error: {persona_status['error']}")
+                if persona_status.get('session_id'):
+                    st.success(f"Session ID: {persona_status['session_id']}")
+            with col2:
+                if persona_status['status'] == 'running':
+                    st.progress(persona_status['progress'] / 100)
+                elif persona_status['status'] == 'completed':
+                    st.success("✅ Complete")
+                elif persona_status['status'] == 'failed':
+                    st.error("❌ Failed")
+                else:
+                    st.info("⏳ Pending")
 
 def load_sessions() -> List[Dict[str, Any]]:
     """Load session history from the API."""
@@ -284,11 +333,11 @@ def display_conversation_results(results: Dict[str, Any]):
                         if len(conversations_to_display) == 1:
                             # If only one conversation, expand by default
                             with st.expander(conv_title, expanded=True):
-                                display_conversation_turns(conversation)
+                                display_conversation_turns(conversation, verbose_mode=True)
                         else:
                             # Multiple conversations, collapse by default
                             with st.expander(conv_title, expanded=False):
-                                display_conversation_turns(conversation)
+                                display_conversation_turns(conversation, verbose_mode=True)
 
                 else:
                     st.info(f"No conversations found for {goal_type}")
@@ -296,7 +345,7 @@ def display_conversation_results(results: Dict[str, Any]):
         st.info("No session data available to display.")
 
 
-def display_conversation_turns(conversation):
+def display_conversation_turns(conversation, verbose_mode=True):
     """Helper function to display conversation turns"""
     # Display turns
     turns = conversation.get('turns', [])
@@ -319,7 +368,7 @@ def display_conversation_turns(conversation):
             # Style based on role
             if role.lower() == 'user':
                 st.markdown(
-                    f"**� Virtual User ({turn_id}):**"
+                    f"**👤 Virtual User ({turn_id}):**"
                 )
                 st.markdown(f"> {content}")
             else:
@@ -364,14 +413,14 @@ def main():
     # Initialize session state
     if 'personas' not in st.session_state:
         st.session_state.personas = []
-    if 'selected_persona' not in st.session_state:
-        st.session_state.selected_persona = None
-    if 'session_results' not in st.session_state:
-        st.session_state.session_results = None
+    if 'selected_personas' not in st.session_state:
+        st.session_state.selected_personas = set()
     if 'sessions_history' not in st.session_state:
         st.session_state.sessions_history = None
     if 'viewed_session' not in st.session_state:
         st.session_state.viewed_session = None
+    if 'multi_session_batch_id' not in st.session_state:
+        st.session_state.multi_session_batch_id = None
     
     # Page 1: Browse Personas
     if page == "👥 Browse Personas":
@@ -585,7 +634,7 @@ def main():
             for i, persona in enumerate(filtered_personas):
                 col = cols[i % 3]
                 with col:
-                    is_selected = st.session_state.selected_persona == persona['id']
+                    is_multi_selected = persona['id'] in st.session_state.selected_personas
                     card_class = "persona-card"
                     st.markdown(f"""
                     <div class="{card_class}">
@@ -601,23 +650,43 @@ def main():
 
                     b_cols = st.columns(2)
                     
-                    button_type = "primary" if is_selected else "secondary"
-
+                    # Multi-select toggle button using "Select"
+                    multi_button_type = "primary" if is_multi_selected else "secondary"
+                    multi_button_text = "Selected ✓" if is_multi_selected else "Select"
                     if b_cols[0].button(
-                        "Select",
+                        multi_button_text,
                         key=f"select_{persona['id']}",
                         use_container_width=True,
-                        type=button_type
+                        type=multi_button_type,
+                        help="Click to toggle selection for batch testing"
                     ):
-                        st.session_state.selected_persona = persona['id']
+                        if is_multi_selected:
+                            st.session_state.selected_personas.discard(persona['id'])
+                        else:
+                            st.session_state.selected_personas.add(persona['id'])
                         st.rerun()
 
+                    # Details button
                     if b_cols[1].button(
                         "Details",
                         key=f"details_{persona['id']}",
                         use_container_width=True
                     ):
                         show_details_dialog(persona)
+            
+            # Show multi-selection summary
+            if st.session_state.selected_personas:
+                st.info(f"Selected {len(st.session_state.selected_personas)} personas for batch testing: {', '.join(sorted(st.session_state.selected_personas))}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("Clear Multi-Selection", use_container_width=True):
+                        st.session_state.selected_personas.clear()
+                        st.rerun()
+                with col2:
+                    if st.button("Select All Filtered", use_container_width=True):
+                        st.session_state.selected_personas = {p['id'] for p in filtered_personas}
+                        st.rerun()
         else:
             st.warning(
                 "No personas found. Make sure the database is populated."
@@ -627,18 +696,22 @@ def main():
     elif page == "🎯 Run Testing Session":
         st.header("Configure Agent Testing Session")
 
-        # Check if persona is selected
-        if not st.session_state.selected_persona:
+        # Check if any persona is selected
+        selected_count = len(st.session_state.selected_personas)
+        
+        if selected_count == 0:
             st.warning(
-                "Please select a virtual user from the "
+                "Please select one or more virtual users from the "
                 "'Browse Personas' page first."
             )
             st.stop()
 
-        st.info(
-            f"Selected Virtual User: **{st.session_state.selected_persona}**"
-        )
-
+        # Show selected personas info
+        selected_personas_list = sorted(list(st.session_state.selected_personas))
+        with st.expander("Selected Personas", expanded=False):
+            for persona_id in selected_personas_list:
+                st.write(f"• {persona_id}")
+        
         # Session configuration
         col1, col2 = st.columns(2)
         
@@ -651,14 +724,6 @@ def main():
                 help="Number of goals to generate for the session"
             )
             
-            max_turns = st.slider(
-                "Maximum Turns",
-                min_value=1,
-                max_value=10,
-                value=5,
-                help="Maximum number of conversation turns"
-            )
-            
             conversations_per_goal = st.slider(
                 "Conversations per Goal",
                 min_value=1,
@@ -667,63 +732,80 @@ def main():
                 help="Number of conversations to run for each goal"
             )
         
+            max_turns = st.slider(
+                "Maximum Turns",
+                min_value=1,
+                max_value=10,
+                value=5,
+                help="Maximum number of conversation turns"
+            )
+            
         with col2:
             st.markdown("### Testing Session Preview")
-            st.json({
-                "virtual_user": st.session_state.selected_persona,
+            preview_data = {
+                "total_personas": len(selected_personas_list),
+                "personas": selected_personas_list[:3] + (["..."] if len(selected_personas_list) > 3 else []),
                 "num_goals": num_goals,
                 "max_turns": max_turns,
                 "conversations_per_goal": conversations_per_goal,
                 "verbose": True
-            })
+            }
+            st.json(preview_data)
         
         # Run session button
+        button_text = f"🚀 Run User Session(s)"
         if st.button(
-            "🚀 Run Agent Testing Session",
+            button_text,
             type="primary",
             use_container_width=True
         ):
-            with st.spinner(
-                "Running agent testing session... This may take a few minutes."
-            ):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-
-                # Simulate progress
-                for i in range(100):
-                    progress_bar.progress(i + 1)
-                    if i < 20:
-                        status_text.text("Initializing session...")
-                    elif i < 50:
-                        status_text.text("Generating goals...")
-                    elif i < 80:
-                        status_text.text("Running conversations...")
-                    else:
-                        status_text.text("Finalizing results...")
-                    time.sleep(0.05)
-
-                # Actually run the session
-                results = run_agent_testing_session(
-                    persona_id=st.session_state.selected_persona,
+            # All sessions are now multi-persona (even single persona uses the batch API)
+            with st.spinner("Starting testing session..."):
+                results = run_multi_persona_testing_session(
+                    persona_ids=selected_personas_list,
                     num_goals=num_goals,
                     max_turns=max_turns,
                     conversations_per_goal=conversations_per_goal,
                     verbose=True
                 )
-
-                progress_bar.empty()
-                status_text.empty()
-
+                
                 if results.get("success"):
-                    st.session_state.session_results = results
+                    st.session_state.multi_session_batch_id = results.get("batch_id")
                     st.success(
-                        "Session completed! View results in the "
-                        "'Session Results' tab."
+                        f"Session started! Batch ID: {results.get('batch_id')}"
                     )
-                    st.balloons()
                 else:
                     error_msg = results.get('error', 'Unknown error')
-                    st.error(f"Session failed: {error_msg}")
+                    st.error(f"Failed to start session: {error_msg}")
+
+        # Display active batch status if available
+        if st.session_state.multi_session_batch_id:
+            st.markdown("---")
+            st.subheader("Active Batch Status")
+            
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.write(f"Batch ID: `{st.session_state.multi_session_batch_id}`")
+                st.write(f"Click '🔄 Refresh Status' to check the current status of conversations.")
+            with col2:
+                if st.button("🔄 Refresh Status", use_container_width=True):
+                    st.rerun()
+            
+            # Get and display current status
+            batch_status = get_batch_status(st.session_state.multi_session_batch_id)
+            if batch_status.get("success"):
+                display_batch_status(batch_status)
+                
+                # Check if batch is complete
+                if batch_status.get("overall_status") in ["completed", "failed", "partially_completed"]:
+                    if st.button("Clear Batch Status", use_container_width=True):
+                        st.session_state.multi_session_batch_id = None
+                        st.rerun()
+            else:
+                st.error(f"Error getting batch status: {batch_status.get('error', 'Unknown error')}")
+                if st.button("Clear Invalid Batch", use_container_width=True):
+                    st.session_state.multi_session_batch_id = None
+                    st.rerun()
 
     # Page 3: Session Results
     elif page == "📊 Session Results":

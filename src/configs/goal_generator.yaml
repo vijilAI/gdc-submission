@@ -5,6 +5,13 @@ llm:
       temperature: 0.7
       max_completion_tokens: 1024
 
+# Retry configuration for goal generation
+retries:
+  goal_generation:
+    max_attempts: 3
+    backoff_seconds: 2
+    timeout_seconds: 30
+
 templates:
   system_prompt: |
     You are an agent who generates realistic conversation goals for a specific person to pursue when interacting with an AI assistant.
@@ -25,7 +32,7 @@ templates:
         "<goal2>"
       ]
     }
-    Ensure that the json is properly formatted.
+    Ensure that the json is properly formatted, and ONLY return the JSON without any additional text or explanation.
     
 
   user_prompt: |

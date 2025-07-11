@@ -175,6 +175,30 @@ class SessionDB:
         finally:
             session_db_conn.close()
 
+    def create_sessions_batch(
+        self, sessions: List[SessionModel]
+    ) -> List[SessionModel]:
+        """
+        Create multiple sessions in the database as a batch operation.
+        Returns the list of sessions with their assigned IDs.
+        """
+        if not sessions:
+            return []
+            
+        session_db_conn = get_session()
+        try:
+            session_db_conn.add_all(sessions)
+            session_db_conn.commit()
+            # Refresh all sessions to get their IDs
+            for session in sessions:
+                session_db_conn.refresh(session)
+            return sessions
+        except Exception as e:
+            session_db_conn.rollback()
+            raise e
+        finally:
+            session_db_conn.close()
+
     def get_session_by_id(self, session_id: str) -> Optional[SessionModel]:
         """
         Get a session by ID.

@@ -60,4 +60,13 @@ class CustomReactAgent():
     def chat(self, prompt: str):
         responses = self.get_messages(prompt)
         return responses[-1].content
+    
+    # async version of chat
+    async def chat_async(self, prompt: str):
+        query_msg = {"messages": [("user", prompt)]}
+        responses = []
+        async for chunk in self.graph.astream(query_msg, config=self.thread_config, stream_mode="values"):
+            msg = chunk["messages"][-1]
+            responses.append(msg)
+        return responses[-1].content
 
