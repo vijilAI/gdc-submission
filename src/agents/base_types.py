@@ -65,7 +65,53 @@ class Persona:
         :param json_path: Path to the JSON file containing the persona data.
         :return: Persona instance with data from the JSON file.
         """
-        with open(json_path, 'r') as f:
+        import os
+        
+        # Security: Validate the path is safe
+        normalized_path = os.path.normpath(json_path)
+        if '..' in normalized_path:
+            raise ValueError(f"Invalid path: {json_path}")
+        
+        # Ensure the path is absolute and within expected directories
+        if not os.path.isabs(normalized_path):
+            # Get the repository root
+            repo_root = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), '..', '..')
+            )
+            # Construct safe path within personas directory
+            personas_dir = os.path.join(repo_root, 'personas')
+            safe_path = os.path.join(personas_dir, normalized_path)
+            if not safe_path.endswith('.json'):
+                safe_path += '.json'
+            normalized_path = os.path.abspath(safe_path)
+        
+        # Verify the final path is within allowed directories
+        repo_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', '..')
+        )
+        allowed_dirs = [
+            os.path.join(repo_root, 'personas'),
+            os.path.join(repo_root, 'app', 'db')
+        ]
+        
+        path_is_safe = False
+        for allowed_dir in allowed_dirs:
+            try:
+                rel_path = os.path.relpath(normalized_path, allowed_dir)
+                allowed_abs = os.path.abspath(allowed_dir)
+                if (not rel_path.startswith('..') and
+                        normalized_path.startswith(allowed_abs)):
+                    path_is_safe = True
+                    break
+            except ValueError:
+                continue
+        
+        if not path_is_safe:
+            raise ValueError(
+                f"Path {json_path} is not within allowed directories"
+            )
+        
+        with open(normalized_path, 'r') as f:
             data = json.load(f)
         return cls(**data)
     

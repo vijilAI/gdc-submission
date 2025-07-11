@@ -158,15 +158,30 @@ def load_yaml(config_path):
     """
     Load a YAML configuration file safely.
     """
+    import os
+    
     # Define the safe root directory
     src_dir = os.path.dirname(os.path.dirname(__file__))
     
-    # Normalize the path
-    normalized_path = os.path.normpath(config_path)
+    # Remove any potential path traversal sequences
+    normalized_path = os.path.normpath(config_path).replace('..', '')
+    
+    # If it's a relative path, make it relative to src_dir
+    if not os.path.isabs(normalized_path):
+        normalized_path = os.path.join(src_dir, normalized_path)
+    
+    normalized_path = os.path.abspath(normalized_path)
     
     # Ensure the path is within the expected directory
     if not normalized_path.startswith(os.path.abspath(src_dir)):
         raise ValueError(f"Unsafe path detected: {config_path}")
+    
+    # Additional check: ensure the path exists and is a file
+    if not os.path.exists(normalized_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    
+    if not os.path.isfile(normalized_path):
+        raise ValueError(f"Path is not a file: {config_path}")
     
     with open(normalized_path, "r") as f:
         return yaml.safe_load(f)

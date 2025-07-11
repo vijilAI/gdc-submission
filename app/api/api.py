@@ -39,6 +39,80 @@ except ImportError as e:
     session_db = None
     SessionModel = None
 
+# Security: Define allowed directories for file operations
+REPO_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), '..', '..')
+)
+ALLOWED_PERSONA_DIRS = [
+    os.path.join(REPO_ROOT, 'personas'),
+    os.path.join(REPO_ROOT, 'app', 'db')
+]
+ALLOWED_CONFIG_DIRS = [
+    os.path.join(REPO_ROOT, 'src', 'configs')
+]
+
+
+def validate_and_sanitize_path(
+    user_input: str,
+    allowed_dirs: List[str],
+    file_extension: str = None
+) -> str:
+    """
+    Validate and sanitize user-provided file paths to prevent path
+    traversal attacks.
+    
+    Args:
+        user_input: User-provided path or filename
+        allowed_dirs: List of allowed directories
+        file_extension: Expected file extension (optional)
+    
+    Returns:
+        Validated absolute path
+        
+    Raises:
+        HTTPException: If path is invalid or outside allowed directories
+    """
+    # Remove any potential path traversal sequences
+    sanitized_input = os.path.normpath(user_input).replace('..', '')
+    
+    # If it's just a filename, try to find it in allowed directories
+    if not os.path.isabs(sanitized_input):
+        for allowed_dir in allowed_dirs:
+            potential_path = os.path.join(allowed_dir, sanitized_input)
+            if file_extension and not potential_path.endswith(file_extension):
+                potential_path += file_extension
+            if os.path.exists(potential_path):
+                candidate_path = os.path.abspath(potential_path)
+                break
+        else:
+            # If not found, construct path relative to first allowed dir
+            candidate_path = os.path.abspath(
+                os.path.join(allowed_dirs[0], sanitized_input)
+            )
+            if file_extension and not candidate_path.endswith(file_extension):
+                candidate_path += file_extension
+    else:
+        candidate_path = os.path.abspath(sanitized_input)
+    
+    # Verify the resolved path is within allowed directories
+    for allowed_dir in allowed_dirs:
+        try:
+            rel_path = os.path.relpath(candidate_path, allowed_dir)
+            allowed_abs = os.path.abspath(allowed_dir)
+            if (not rel_path.startswith('..') and
+                    candidate_path.startswith(allowed_abs)):
+                return candidate_path
+        except ValueError:
+            continue
+    
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Invalid file path: {user_input}. "
+            "Path must be within allowed directories."
+        )
+    )
+
 
 # Add a JSON serializer for Pydantic models and other types
 @singledispatch
@@ -209,7 +283,7 @@ async def run_virtual_user_testing(request: VirtualUserRequest):
                 src_dir, 'configs', 'alex.yaml'
             )
         
-        # Handle persona path
+        # Handle persona path - validate user input
         persona_id_or_fname = request.persona_fname
         persona_config = None
 
@@ -219,37 +293,78 @@ async def run_virtual_user_testing(request: VirtualUserRequest):
                 persona_config = persona_obj.to_dict()
             else:
                 # Fallback to checking filesystem if not in DB
-                persona_fpath = os.path.join(repo_root, persona_id_or_fname)
+                try:
+                    persona_fpath = validate_and_sanitize_path(
+                        persona_id_or_fname,
+                        ALLOWED_PERSONA_DIRS,
+                        '.json'
+                    )
+                    if os.path.exists(persona_fpath):
+                        persona_config = persona_fpath
+                    else:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=(
+                                f"Virtual user '{persona_id_or_fname}' "
+                                "not found in DB or filesystem."
+                            )
+                        )
+                except HTTPException:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=(
+                            f"Virtual user '{persona_id_or_fname}' "
+                            "not found in DB or filesystem."
+                        )
+                    )
+        else:
+            # Fallback to checking filesystem if not using DB
+            try:
+                persona_fpath = validate_and_sanitize_path(
+                    persona_id_or_fname,
+                    ALLOWED_PERSONA_DIRS,
+                    '.json'
+                )
                 if os.path.exists(persona_fpath):
                     persona_config = persona_fpath
                 else:
                     raise HTTPException(
                         status_code=404,
                         detail=(
-                            f"Virtual user '{persona_id_or_fname}' not found "
-                            "in DB or filesystem."
+                            f"Virtual user file '{persona_id_or_fname}' "
+                            "not found."
                         )
                     )
-        else:
-            # Fallback to checking filesystem if not using DB
-            persona_fpath = os.path.join(repo_root, persona_id_or_fname)
-            if os.path.exists(persona_fpath):
-                persona_config = persona_fpath
-            else:
+            except HTTPException:
                 raise HTTPException(
                     status_code=404,
                     detail=(
-                        f"Virtual user file '{persona_id_or_fname}' not found."
+                        f"Virtual user file '{persona_id_or_fname}' "
+                        "not found."
                     )
                 )
 
-        # Validate target agent config exists
-        if not os.path.exists(request.target_agent_config):
-            raise HTTPException(
-                status_code=404,
-                detail="Target agent config not found: "
-                       f"{request.target_agent_config}"
-            )
+        # Validate target agent config exists - validate user input
+        if request.target_agent_config:
+            try:
+                validated_config_path = validate_and_sanitize_path(
+                    request.target_agent_config,
+                    ALLOWED_CONFIG_DIRS,
+                    '.yaml'
+                )
+                if not os.path.exists(validated_config_path):
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Target agent config not found: "
+                               f"{request.target_agent_config}"
+                    )
+                request.target_agent_config = validated_config_path
+            except HTTPException:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Target agent config not found: "
+                           f"{request.target_agent_config}"
+                )
         
         # Prepare kwargs for run_session_from_config
         session_kwargs = {
@@ -324,16 +439,24 @@ async def run_multi_persona_sessions_background(
         if target_agent_config is None:
             target_agent_config = os.path.join(src_dir, 'configs', 'alex.yaml')
         
-        # Normalize the path
-        normalized_path = os.path.normpath(target_agent_config)
-        
-        # Ensure the path is within the expected directory
-        if not normalized_path.startswith(os.path.abspath(src_dir)):
-            raise ValueError(f"Unsafe path detected: {target_agent_config}")
-        
-        # Validate target agent config exists
-        if not os.path.exists(normalized_path):
-            raise Exception(f"Target agent config not found: {normalized_path}")
+        # Validate target agent config using our security function
+        try:
+            validated_config_path = validate_and_sanitize_path(
+                target_agent_config,
+                ALLOWED_CONFIG_DIRS,
+                '.yaml'
+            )
+            if not os.path.exists(validated_config_path):
+                raise Exception(
+                    f"Target agent config not found: {target_agent_config}"
+                )
+            target_agent_config = validated_config_path
+        except HTTPException:
+            raise Exception(f"Invalid config path: {target_agent_config}")
+        except Exception:
+            raise Exception(
+                f"Target agent config not found: {target_agent_config}"
+            )
         
         # Prepare kwargs for run_session_from_config (without persona_config)
         session_kwargs = {
