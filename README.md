@@ -1,6 +1,6 @@
 # Global Dialogues with AI: Simulating Diverse User Preferences on AI Interactions
 
-An exploratory platform for understanding how AI conversational agents interact with diverse, culturally-aware virtual users based on the Global Dialogues Challenge dataset. This system facilitates conversations between people from different backgrounds and AI assistants to explore cultural preferences and communication patterns across global demographics.
+An exploratory platform for understanding how AI conversational agents interact with diverse, culturally-aware virtual users based on the Global Dialogues Challenge dataset. This system facilitates conversations between virtual users from different backgrounds and AI assistants to explore cultural preferences and communication patterns with AI across global demographics.
 
 ## 📖 Table of Contents
 
@@ -43,19 +43,32 @@ An exploratory platform for understanding how AI conversational agents interact 
 
 2. **Install dependencies**:
 
-    Create a new virtual environment and install dependencies.
+    Create a new virtual environment using your favorite environment manager and install dependencies.
 
    ```bash
    pip install .
+   ```
    # Or if using Poetry:
+   ```bash
    poetry install
    ```
 
-   Activate your virtual environment with your favorite environment manager.
+   Activate your virtual environment. If you're using poetry, you can do this with
+   ```bash
+   $(poetry env activate)
+   ```
 
 3. **Set up environment variables**:
+
+   Create an `.env` file in the root directory of the repository and add your Together AI API key. Example `.env` file:
+
    ```bash
-   # Create .env file or set environment variables
+   TOGETHER_API_KEY=your_together_ai_api_key
+   ```
+
+   Alternatively, manually set your `TOGETHER_API_KEY` environment variable as follows:
+
+   ```bash
    export TOGETHER_API_KEY="your_together_ai_api_key"
    ```
 
