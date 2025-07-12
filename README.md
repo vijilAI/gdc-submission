@@ -11,8 +11,6 @@ An exploratory platform for understanding how AI conversational agents interact 
 - [🎭 Configuring Different Chatbots](#-configuring-different-chatbots)
 - [🌍 Understanding Virtual Users](#-understanding-virtual-users)
 - [📊 Analysis and Insights](#-analysis-and-insights)
-- [🔧 Troubleshooting](#-troubleshooting)
-- [🤝 Contributing](#-contributing)
 - [📝 License](#-license)
 - [🆘 Support](#-support)
 
