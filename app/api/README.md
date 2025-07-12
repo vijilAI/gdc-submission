@@ -8,31 +8,13 @@ This directory contains the API components for the GDC Persona Application.
 - `run_api.py` - Script to start the API server
 - `example_api_usage.py` - Example usage of the API endpoints
 
-## Quick Start
+## API Endpoints
 
-### Starting the API Server
-
-```bash
-cd /home/smajumdar/vijil/gdc-submission/app/api
-python run_api.py
-```
-
-Or from the repository root:
-
-```bash
-cd /home/smajumdar/vijil/gdc-submission
-python app/api/run_api.py
-```
-
-The API will be available at `http://localhost:8000`
-
-### API Endpoints
-
-#### Health Check
+### Health Check
 - **GET** `/health` - Check if the API is running
 - Response: `{"status": "healthy"}`
 
-#### Virtual User Testing Session
+### Virtual User Testing Session
 - **POST** `/run-virtual-user-testing` - Run a virtual user testing session with a persona
 - Request body:
   ```json
@@ -44,7 +26,7 @@ The API will be available at `http://localhost:8000`
   }
   ```
 
-#### Persona Management
+### Persona Management
 - **GET** `/personas` - List all personas in the database
 - **GET** `/personas/{persona_id}` - Get a specific persona by ID
 - **POST** `/load-personas` - Load personas from JSON files into database
@@ -90,13 +72,6 @@ result = response.json()
 if result["success"]:
     print(f"Session completed. Good faith results: {result['good_faith']}")
 ```
-
-## Dependencies
-
-The API requires the following packages (see `src/requirements.txt`):
-- fastapi>=0.104.1
-- uvicorn>=0.24.0
-- pydantic>=2.0.0
 
 ## Notes
 
