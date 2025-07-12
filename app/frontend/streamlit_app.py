@@ -6,7 +6,7 @@ from typing import Dict, List, Any
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
-
+import numpy as np
 # Configuration
 API_BASE = "http://localhost:8000"
 
@@ -972,16 +972,24 @@ def main():
                 vectorizer = TfidfVectorizer(stop_words='english')
                 tfidf_matrix = vectorizer.fit_transform(document_list)
                 feature_names = vectorizer.get_feature_names_out()
-
+                tfidf_dense = tfidf_matrix.toarray()
 
                 def generate_wordcloud_for_document(doc_index):
+                    doc_vector = tfidf_dense[doc_index]
+                    other_vectors = np.delete(tfidf_dense, doc_index, axis=0)
+
                     # Get the TF-IDF vector for this document
-                    tfidf_vector = tfidf_matrix[doc_index]
+                    mean_other = np.mean(other_vectors, axis=0)
+
+                    # Normalized uniqueness score = this doc - mean of others
+                    diff_vector = doc_vector - mean_other
+                    diff_vector[diff_vector < 0] = 0  # remove negative scores
+
+                    # Map to words
                     word_scores = {
-                        feature_names[i]: tfidf_vector[0, i]
-                        for i in tfidf_vector.nonzero()[1]
-                    }
-                        
+                        feature_names[i]: diff_vector[i]
+                        for i in np.nonzero(diff_vector)[0]
+                    }                        
                         # Generate word cloud from TF-IDF scores
                     wordcloud = WordCloud(width=800, height=400, background_color='white')
                     wordcloud.generate_from_frequencies(word_scores)
